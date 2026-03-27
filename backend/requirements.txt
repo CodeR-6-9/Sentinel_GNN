@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+langgraph
+langchain
+neo4j
+torch
+torch-geometric
+shap
+pydantic
+python-dotenv
