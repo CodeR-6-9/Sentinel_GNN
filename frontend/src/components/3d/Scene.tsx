@@ -2,7 +2,7 @@
 
 import React, { useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Sphere, Line, OrbitControls } from "@react-three/drei";
+import { Sphere, Line, OrbitControls, Text } from "@react-three/drei";
 import * as THREE from "three";
 
 interface GeneNodeProps {
@@ -47,21 +47,17 @@ function GeneNode({ position, color, name, isFlagged }: GeneNodeProps) {
         </Sphere>
       )}
 
-      {/* Label positioned above the sphere */}
-      <mesh position={[0, isFlagged ? 0.6 : 0.5, 0]}>
-        <textGeometry
-          args={[
-            name,
-            {
-              font: new THREE.Font({}),
-              size: 0.15,
-              height: 0.01,
-            },
-          ]}
-        >
-          <meshStandardMaterial color={isFlagged ? "#ff1744" : "#ffffff"} />
-        </textGeometry>
-      </mesh>
+      {/* Label positioned above the sphere using @react-three/drei Text */}
+      <Text
+        position={[0, isFlagged ? 0.7 : 0.6, 0]}
+        fontSize={0.2}
+        color={isFlagged ? "#ff1744" : "#ffffff"}
+        anchorX="center"
+        anchorY="middle"
+        fontWeight="bold"
+      >
+        {name}
+      </Text>
     </group>
   );
 }
