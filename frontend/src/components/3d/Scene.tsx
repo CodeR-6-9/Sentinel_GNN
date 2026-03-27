@@ -14,8 +14,8 @@ interface GeneNodeProps {
 
 /**
  * GeneNode Component
- * Renders a single gene node in the 3D canvas.
- * If flagged, it emits a glowing red/pink color; otherwise, a calm blue.
+ * Renders a single gene node in the 3D canvas with medical aesthetic.
+ * If flagged, displays with a calm pink glow; otherwise, clean soft blue.
  */
 function GeneNode({ position, color, name, isFlagged }: GeneNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -30,31 +30,33 @@ function GeneNode({ position, color, name, isFlagged }: GeneNodeProps) {
 
   return (
     <group position={position}>
+      {/* Core sphere */}
       <Sphere ref={meshRef} args={[isFlagged ? 0.4 : 0.3, 32, 32]}>
         <meshStandardMaterial
-          color={isFlagged ? "#ff1744" : color}
-          emissive={isFlagged ? "#ff1744" : "#000000"}
-          emissiveIntensity={isFlagged ? 1.5 : 0}
-          metalness={0.6}
-          roughness={0.3}
+          color={isFlagged ? "#ffffff" : "#38bdf8"}
+          emissive={isFlagged ? "#f472b6" : "#000000"}
+          emissiveIntensity={isFlagged ? 0.8 : 0}
+          metalness={0.4}
+          roughness={0.4}
         />
       </Sphere>
 
-      {/* Glow effect for flagged genes */}
+      {/* Crayon-like aura for flagged genes */}
       {isFlagged && (
-        <Sphere args={[0.5, 32, 32]}>
-          <meshBasicMaterial color="#ff1744" transparent opacity={0.2} />
+        <Sphere args={[0.55, 32, 32]}>
+          <meshBasicMaterial color="#f472b6" transparent opacity={0.15} />
         </Sphere>
       )}
 
-      {/* Label positioned above the sphere using @react-three/drei Text */}
+      {/* Label positioned above the sphere */}
       <Text
         position={[0, isFlagged ? 0.7 : 0.6, 0]}
-        fontSize={0.2}
-        color={isFlagged ? "#ff1744" : "#ffffff"}
+        fontSize={0.18}
+        color={isFlagged ? "#f472b6" : "#e2e8f0"}
         anchorX="center"
         anchorY="middle"
-        fontWeight="bold"
+        fontWeight="600"
+        maxWidth={1}
       >
         {name}
       </Text>
@@ -68,34 +70,44 @@ interface SceneProps {
 
 /**
  * Scene Component
- * Renders a 3D gene network visualization with interactive controls.
+ * Renders a premium medical-grade 3D gene network visualization.
  */
 export default function Scene({ flaggedGenes = [] }: SceneProps) {
-  // Define gene nodes with positions
+  // Define gene nodes with positions (including central "hub" node)
   const geneNodes = [
-    { position: [-3, 2, 0] as [number, number, number], name: "blaCTX-M-15", color: "#60a5fa" },
-    { position: [3, 2, 0] as [number, number, number], name: "mecA", color: "#60a5fa" },
-    { position: [-1.5, -2, 2] as [number, number, number], name: "tetM", color: "#60a5fa" },
-    { position: [1.5, -2, -2] as [number, number, number], name: "rpoB", color: "#60a5fa" },
+    { position: [-3, 2, 0] as [number, number, number], name: "blaCTX-M-15", color: "#38bdf8" },
+    { position: [3, 2, 0] as [number, number, number], name: "mecA", color: "#38bdf8" },
+    { position: [-1.5, -2, 2] as [number, number, number], name: "tetM", color: "#38bdf8" },
+    { position: [1.5, -2, -2] as [number, number, number], name: "rpoB", color: "#38bdf8" },
+    { position: [0, 0, -1] as [number, number, number], name: "gyrA", color: "#38bdf8" }, // Central hub
   ];
 
-  // Define connections between nodes
+  // Define connections between nodes (all connect to central hub)
   const connections = [
-    [geneNodes[0].position, geneNodes[1].position],
-    [geneNodes[0].position, geneNodes[2].position],
-    [geneNodes[1].position, geneNodes[3].position],
-    [geneNodes[2].position, geneNodes[3].position],
+    [geneNodes[0].position, geneNodes[4].position], // blaCTX-M-15 -> gyrA
+    [geneNodes[1].position, geneNodes[4].position], // mecA -> gyrA
+    [geneNodes[2].position, geneNodes[4].position], // tetM -> gyrA
+    [geneNodes[3].position, geneNodes[4].position], // rpoB -> gyrA
+    [geneNodes[0].position, geneNodes[1].position], // blaCTX-M-15 <-> mecA
+    [geneNodes[2].position, geneNodes[3].position], // tetM <-> rpoB
   ];
 
   return (
     <Canvas
-      camera={{ position: [0, 0, 8], fov: 75 }}
-      className="w-full h-full bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900"
+      camera={{ position: [0, 0, 9], fov: 72 }}
+      className="w-full h-full bg-slate-950"
     >
-      {/* Lighting */}
-      <ambientLight intensity={0.6} />
-      <pointLight position={[10, 10, 10]} intensity={0.8} />
-      <pointLight position={[-10, -10, 10]} intensity={0.4} color="#60a5fa" />
+      {/* Ambient light for base illumination */}
+      <ambientLight intensity={0.5} />
+
+      {/* Primary white light from above-right */}
+      <pointLight position={[8, 8, 8]} intensity={0.9} color="#ffffff" />
+
+      {/* Soft blue accent light */}
+      <pointLight position={[10, 10, 10]} intensity={0.5} color="#38bdf8" />
+
+      {/* Soft pink back-light for medical aesthetic */}
+      <pointLight position={[-10, -10, -10]} intensity={0.5} color="#f472b6" />
 
       {/* Gene Nodes */}
       {geneNodes.map((node, index) => (
@@ -108,30 +120,30 @@ export default function Scene({ flaggedGenes = [] }: SceneProps) {
         />
       ))}
 
-      {/* Connection Lines */}
+      {/* Connection Lines - thin, crisp white */}
       {connections.map((connection, index) => (
         <Line
           key={index}
           points={connection}
-          color="#64748b"
-          lineWidth={1}
+          color="#ffffff"
+          lineWidth={0.5}
           transparent
-          opacity={0.6}
+          opacity={0.3}
         />
       ))}
 
-      {/* Interactive Controls */}
+      {/* Interactive Controls - calm, clinical rotation */}
       <OrbitControls
         autoRotate
-        autoRotateSpeed={1}
+        autoRotateSpeed={0.5}
         enableZoom
         enablePan
-        maxDistance={15}
-        minDistance={3}
+        maxDistance={20}
+        minDistance={4}
       />
 
-      {/* Background Grid */}
-      <gridHelper args={[20, 20]} position={[0, -3, 0]} />
+      {/* Subtle background grid */}
+      <gridHelper args={[30, 30]} position={[0, -4, 0]} />
     </Canvas>
   );
 }
