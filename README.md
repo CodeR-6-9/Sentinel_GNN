@@ -4,7 +4,6 @@
 
 [![Status](https://img.shields.io/badge/status-prototype-pink)](https://github.com/CodeR-6-9/Sentinel_GNN)
 [![Architecture](https://img.shields.io/badge/architecture-Neural--Symbolic-blue)](#)
-[![Event](https://img.shields.io/badge/event-Bio--Hackathon-white)](#)
 
 **Sentinel-GNN** is a medical intelligence platform designed to address the **"black-box" limitation in antimicrobial resistance (AMR) prediction**.
 
