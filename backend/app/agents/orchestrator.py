@@ -2,29 +2,30 @@ from langgraph.graph import StateGraph, END
 from app.agents.state import AgentState
 
 
-def mock_gnn_call(isolate_id: str) -> dict:
+def mock_gnn_call(isolate_id: str, patient_profile: dict) -> dict:
     """
-    Mock GNN prediction function.
-    In production, this would call the actual PyTorch GNN model.
+    Mock GNN prediction function for epidemiological patient graph.
+    In production, this would call the actual PyTorch patient risk model.
     
     Args:
         isolate_id: Bacterial isolate identifier.
+        patient_profile: Dict with Age, Gender, Diabetes, Hospital_before.
         
     Returns:
-        Dictionary with prediction results including confidence and top genes.
+        Dictionary with prediction results including confidence and contributing risk factors.
     """
     return {
         "is_resistant": True,
         "prediction": "Resistant",
         "confidence": 0.92,
-        "top_genes": ["blaCTX-M-15", "mecA"]
+        "risk_factors": ["Hospital_before", "Diabetes"]  # Epidemiological risk factors
     }
 
 
 def predictor_node(state: AgentState) -> AgentState:
     """
     Node 1: Predictor Agent
-    Runs GNN model inference and updates ml_prediction in state.
+    Runs GNN model inference based on patient risk profile.
     
     Args:
         state: Current AgentState.
@@ -33,15 +34,16 @@ def predictor_node(state: AgentState) -> AgentState:
         Updated AgentState with ml_prediction and trace.
     """
     isolate_id = state["isolate_id"]
+    patient_profile = state["patient_profile"]
     
-    # Call mock GNN
-    ml_result = mock_gnn_call(isolate_id)
+    # Call mock GNN with patient profile
+    ml_result = mock_gnn_call(isolate_id, patient_profile)
     
     # Update state
     state["ml_prediction"] = ml_result
     state["trace"].append(
-        f"GNN predicted resistance with confidence {ml_result['confidence']:.2f}. "
-        f"Top genes: {', '.join(ml_result['top_genes'])}"
+        f"GNN predicted resistance with confidence {ml_result['confidence']:.2f} "
+        f"based on patient risk factors: {', '.join(ml_result['risk_factors'])}"
     )
     
     return state
@@ -50,7 +52,7 @@ def predictor_node(state: AgentState) -> AgentState:
 def verifier_node(state: AgentState) -> AgentState:
     """
     Node 2: Verifier Agent
-    Queries knowledge graph (Neo4j) to verify GNN predictions against CARD database.
+    Verifies patient risk factors against clinical epidemiological guidelines.
     
     Args:
         state: Current AgentState with ml_prediction populated.
@@ -58,23 +60,27 @@ def verifier_node(state: AgentState) -> AgentState:
     Returns:
         Updated AgentState with kg_verification and trace.
     """
-    # Extract top genes from ML prediction
-    top_genes = state["ml_prediction"].get("top_genes", [])
+    # Extract risk factors from ML prediction
+    risk_factors = state["ml_prediction"].get("risk_factors", [])
+    patient_profile = state["patient_profile"]
     
-    # Simulate Neo4j Knowledge Graph verification
-    kg_verification_result = {
-        "genes_found_in_card": True,
-        "genes_verified": top_genes,
-        "resistance_mechanism": "Beta-lactam and Methicillin resistance",
-        "literature_support": 24,
-        "confidence_score": 0.88
+    # Simulate clinical guideline verification for epidemiological factors
+    clinical_guideline_verification = {
+        "risk_factors_validated": True,
+        "factors_verified": risk_factors,
+        "clinical_guideline": "CDC/WHO antimicrobial stewardship protocol",
+        "guidelines_matched": 3,  # Number of clinical guidelines matched
+        "confidence_score": 0.88,
+        "additional_context": f"Age: {patient_profile.get('Age')}, "
+                            f"Hospital_History: {patient_profile.get('Hospital_before', False)}"
     }
     
     # Update state
-    state["kg_verification"] = kg_verification_result
+    state["kg_verification"] = clinical_guideline_verification
     state["trace"].append(
-        f"Queried CARD database. Found {kg_verification_result['literature_support']} literature sources. "
-        f"Verified resistance mechanism: {kg_verification_result['resistance_mechanism']}"
+        f"Verified patient risk factors against clinical guidelines. "
+        f"Found {clinical_guideline_verification['guidelines_matched']} matching epidemiological protocols. "
+        f"Guideline: {clinical_guideline_verification['clinical_guideline']}"
     )
     
     return state

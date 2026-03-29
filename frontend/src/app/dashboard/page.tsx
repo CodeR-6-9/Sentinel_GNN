@@ -4,15 +4,21 @@ import React, { useState } from "react";
 import { AlertCircle, Zap, Play } from "lucide-react";
 import Scene from "@/components/3d/Scene";
 import AgentTrace from "@/components/chat/AgentTrace";
-import { analyzeIsolate, AnalyzeResponse } from "@/lib/api";
+import { analyzeIsolate, AnalyzeResponse, PatientProfile } from "@/lib/api";
 
 export default function DashboardPage() {
   // State Management
   const [isolateId, setIsolateId] = useState<string>("");
+  const [patientProfile, setPatientProfile] = useState<PatientProfile>({
+    Age: 65,
+    Gender: "M",
+    Diabetes: false,
+    Hospital_before: true,
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [traceList, setTraceList] = useState<string[]>([]);
-  const [flaggedGenes, setFlaggedGenes] = useState<string[]>([]);
+  const [riskFactors, setRiskFactors] = useState<string[]>([]);
   const [strategy, setStrategy] = useState<string>("");
   const [mlPrediction, setMlPrediction] = useState<{
     prediction: string;
@@ -31,16 +37,16 @@ export default function DashboardPage() {
     setIsLoading(true);
     setError(null);
     setTraceList([]);
-    setFlaggedGenes([]);
+    setRiskFactors([]);
     setStrategy("");
     setMlPrediction(null);
 
     try {
-      const response: AnalyzeResponse = await analyzeIsolate(isolateId);
+      const response: AnalyzeResponse = await analyzeIsolate(isolateId, patientProfile);
 
       // Update state with response data
       setTraceList(response.trace);
-      setFlaggedGenes(response.ml_prediction.top_genes);
+      setRiskFactors(response.ml_prediction.risk_factors);
       setStrategy(response.strategy);
       setMlPrediction({
         prediction: response.ml_prediction.prediction,
@@ -64,24 +70,31 @@ export default function DashboardPage() {
     setError(null);
   };
 
+  const handlePatientProfileChange = (field: keyof PatientProfile, value: unknown) => {
+    setPatientProfile((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
   return (
     <main className="w-screen h-screen bg-slate-950 text-white overflow-hidden">
       {/* Grid Layout: 3D Canvas (Left) + Control Panel (Right) */}
       <div className="grid grid-cols-3 gap-6 h-full p-6">
         {/* Left Side: 3D Gene Network */}
         <div className="col-span-2 h-full rounded-lg overflow-hidden border border-slate-700 shadow-2xl">
-          <Scene flaggedGenes={flaggedGenes} />
+          <Scene flaggedGenes={riskFactors} />
         </div>
 
         {/* Right Side: Control Panel */}
-        <div className="col-span-1 flex flex-col gap-4 h-full">
+        <div className="col-span-1 flex flex-col gap-4 h-full overflow-y-auto">
           {/* Header */}
           <div className="bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg p-4 shadow-lg">
             <h1 className="text-xl font-bold">Sentinel-GNN</h1>
-            <p className="text-xs text-cyan-100 mt-1">AMR Prediction & Discovery</p>
+            <p className="text-xs text-cyan-100 mt-1">Epidemiological Risk Analysis</p>
           </div>
 
-          {/* Input Section */}
+          {/* Isolate ID Input */}
           <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
             <label className="block text-xs font-semibold text-slate-400 mb-2">
               Isolate ID
@@ -93,17 +106,77 @@ export default function DashboardPage() {
               placeholder="e.g., AMR_001"
               className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
             />
-
-            {/* Run Analysis Button */}
-            <button
-              onClick={handleRunAnalysis}
-              disabled={isLoading}
-              className="w-full mt-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded flex items-center justify-center gap-2 transition"
-            >
-              <Play className="w-4 h-4" />
-              {isLoading ? "Analyzing..." : "Run Analysis"}
-            </button>
           </div>
+
+          {/* Patient Profile Input */}
+          <div className="bg-slate-900 rounded-lg p-4 border border-slate-700 space-y-3">
+            <p className="text-xs font-semibold text-slate-400">Patient Profile</p>
+
+            {/* Age */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Age</label>
+              <input
+                type="number"
+                value={patientProfile.Age}
+                onChange={(e) => handlePatientProfileChange("Age", parseInt(e.target.value) || 0)}
+                min="0"
+                max="120"
+                className="w-full px-3 py-1 bg-slate-800 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+
+            {/* Gender */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Gender</label>
+              <select
+                value={patientProfile.Gender}
+                onChange={(e) => handlePatientProfileChange("Gender", e.target.value)}
+                className="w-full px-3 py-1 bg-slate-800 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="O">Other</option>
+              </select>
+            </div>
+
+            {/* Diabetes */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="diabetes"
+                checked={patientProfile.Diabetes}
+                onChange={(e) => handlePatientProfileChange("Diabetes", e.target.checked)}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-800 focus:ring-2 focus:ring-cyan-500"
+              />
+              <label htmlFor="diabetes" className="text-xs text-slate-400">
+                Diabetes
+              </label>
+            </div>
+
+            {/* Hospital History */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="hospital"
+                checked={patientProfile.Hospital_before}
+                onChange={(e) => handlePatientProfileChange("Hospital_before", e.target.checked)}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-800 focus:ring-2 focus:ring-cyan-500"
+              />
+              <label htmlFor="hospital" className="text-xs text-slate-400">
+                Previous Hospitalization
+              </label>
+            </div>
+          </div>
+
+          {/* Run Analysis Button */}
+          <button
+            onClick={handleRunAnalysis}
+            disabled={isLoading}
+            className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded flex items-center justify-center gap-2 transition"
+          >
+            <Play className="w-4 h-4" />
+            {isLoading ? "Analyzing..." : "Run Analysis"}
+          </button>
 
           {/* Error Display */}
           {error && (
@@ -137,6 +210,20 @@ export default function DashboardPage() {
               <p className="text-xs text-slate-400">
                 Confidence: <span className="text-cyan-400 font-mono">{(mlPrediction.confidence * 100).toFixed(1)}%</span>
               </p>
+            </div>
+          )}
+
+          {/* Risk Factors Display */}
+          {riskFactors.length > 0 && (
+            <div className="bg-slate-900 rounded-lg p-3 border border-slate-700 space-y-2">
+              <p className="text-xs font-semibold text-slate-400">Contributing Risk Factors</p>
+              <div className="flex flex-wrap gap-2">
+                {riskFactors.map((factor) => (
+                  <span key={factor} className="px-2 py-1 bg-pink-600/30 border border-pink-500 rounded text-xs text-pink-200">
+                    {factor}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
 

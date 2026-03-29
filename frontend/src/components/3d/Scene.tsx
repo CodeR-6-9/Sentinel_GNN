@@ -5,7 +5,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Sphere, Line, OrbitControls, Text } from "@react-three/drei";
 import * as THREE from "three";
 
-interface GeneNodeProps {
+interface RiskNodeProps {
   position: [number, number, number];
   color: string;
   name: string;
@@ -13,11 +13,11 @@ interface GeneNodeProps {
 }
 
 /**
- * GeneNode Component
- * Renders a single gene node in the 3D canvas with medical aesthetic.
+ * RiskNode Component
+ * Renders a single epidemiological risk factor node in the 3D canvas with medical aesthetic.
  * If flagged, displays with a calm pink glow; otherwise, clean soft blue.
  */
-function GeneNode({ position, color, name, isFlagged }: GeneNodeProps) {
+function RiskNode({ position, color, name, isFlagged }: RiskNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
   // Gentle rotation animation
@@ -41,7 +41,7 @@ function GeneNode({ position, color, name, isFlagged }: GeneNodeProps) {
         />
       </Sphere>
 
-      {/* Crayon-like aura for flagged genes */}
+      {/* Crayon-like aura for flagged risk factors */}
       {isFlagged && (
         <Sphere args={[0.55, 32, 32]}>
           <meshBasicMaterial color="#f472b6" transparent opacity={0.15} />
@@ -65,31 +65,32 @@ function GeneNode({ position, color, name, isFlagged }: GeneNodeProps) {
 }
 
 interface SceneProps {
-  flaggedGenes?: string[];
+  flaggedGenes?: string[];  // Reused prop name for backward compatibility, but now contains risk factors
 }
 
 /**
  * Scene Component
- * Renders a premium medical-grade 3D gene network visualization.
+ * Renders a premium medical-grade 3D epidemiological patient risk network visualization.
  */
 export default function Scene({ flaggedGenes = [] }: SceneProps) {
-  // Define gene nodes with positions (including central "hub" node)
-  const geneNodes = [
-    { position: [-3, 2, 0] as [number, number, number], name: "blaCTX-M-15", color: "#38bdf8" },
-    { position: [3, 2, 0] as [number, number, number], name: "mecA", color: "#38bdf8" },
-    { position: [-1.5, -2, 2] as [number, number, number], name: "tetM", color: "#38bdf8" },
-    { position: [1.5, -2, -2] as [number, number, number], name: "rpoB", color: "#38bdf8" },
-    { position: [0, 0, -1] as [number, number, number], name: "gyrA", color: "#38bdf8" }, // Central hub
+  // Define epidemiological risk factor nodes with positions (including central "hub" node)
+  // These represent common epidemiological factors: Age, Gender, Comorbidities, Hospital History
+  const riskNodes = [
+    { position: [-3, 2, 0] as [number, number, number], name: "Hospital_before", color: "#38bdf8" },
+    { position: [3, 2, 0] as [number, number, number], name: "Age", color: "#38bdf8" },
+    { position: [-1.5, -2, 2] as [number, number, number], name: "Diabetes", color: "#38bdf8" },
+    { position: [1.5, -2, -2] as [number, number, number], name: "Gender", color: "#38bdf8" },
+    { position: [0, 0, -1] as [number, number, number], name: "Patient Risk Profile", color: "#38bdf8" }, // Central hub
   ];
 
   // Define connections between nodes (all connect to central hub)
   const connections = [
-    [geneNodes[0].position, geneNodes[4].position], // blaCTX-M-15 -> gyrA
-    [geneNodes[1].position, geneNodes[4].position], // mecA -> gyrA
-    [geneNodes[2].position, geneNodes[4].position], // tetM -> gyrA
-    [geneNodes[3].position, geneNodes[4].position], // rpoB -> gyrA
-    [geneNodes[0].position, geneNodes[1].position], // blaCTX-M-15 <-> mecA
-    [geneNodes[2].position, geneNodes[3].position], // tetM <-> rpoB
+    [riskNodes[0].position, riskNodes[4].position], // Hospital_before -> Patient Risk Profile
+    [riskNodes[1].position, riskNodes[4].position], // Age -> Patient Risk Profile
+    [riskNodes[2].position, riskNodes[4].position], // Diabetes -> Patient Risk Profile
+    [riskNodes[3].position, riskNodes[4].position], // Gender -> Patient Risk Profile
+    [riskNodes[0].position, riskNodes[1].position], // Hospital_before <-> Age
+    [riskNodes[2].position, riskNodes[3].position], // Diabetes <-> Gender
   ];
 
   return (
@@ -109,9 +110,9 @@ export default function Scene({ flaggedGenes = [] }: SceneProps) {
       {/* Soft pink back-light for medical aesthetic */}
       <pointLight position={[-10, -10, -10]} intensity={0.5} color="#f472b6" />
 
-      {/* Gene Nodes */}
-      {geneNodes.map((node, index) => (
-        <GeneNode
+      {/* Risk Factor Nodes */}
+      {riskNodes.map((node, index) => (
+        <RiskNode
           key={index}
           position={node.position}
           color={node.color}
