@@ -9,6 +9,8 @@ class PatientProfile(BaseModel):
     Gender: str
     Diabetes: bool
     Hospital_before: bool
+    Hypertension: bool
+    Infection_Freq: int
 
 
 class AnalyzeRequest(BaseModel):
@@ -17,7 +19,7 @@ class AnalyzeRequest(BaseModel):
     
     Attributes:
         isolate_id: Unique identifier for the bacterial isolate to analyze.
-        patient_profile: Patient demographics (Age, Gender, Diabetes, Hospital_before).
+        patient_profile: Patient demographics (Age, Gender, Diabetes, Hospital_before, Hypertension, Infection_Freq).
     """
     isolate_id: str
     patient_profile: PatientProfile

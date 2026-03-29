@@ -191,15 +191,18 @@ interface SceneProps {
 /**
  * Scene Component
  * Renders a professional epidemiological patient risk profile visualization.
- * Central patient node connected to 4 risk factor nodes with interactive visualization.
+ * Central patient node connected to 6 risk factor nodes (hexagon arrangement) with interactive visualization.
  */
 export default function Scene({ flaggedGenes = [] }: SceneProps) {
-  // Define the 4 epidemiological risk factors with positions around central patient
+  // Define the 6 epidemiological risk factors positioned in hexagon around central patient
+  // 6 nodes evenly spaced at 60° intervals, radius 3.5 units
   const riskFactors = [
     { name: "Age", position: [3.5, 0, 0] as [number, number, number] },
-    { name: "Gender", position: [-3.5, 0, 0] as [number, number, number] },
-    { name: "Diabetes", position: [0, 3.5, 0] as [number, number, number] },
-    { name: "Hospital_before", position: [0, -3.5, 0] as [number, number, number] },
+    { name: "Gender", position: [1.75, 3.03, 0] as [number, number, number] },
+    { name: "Diabetes", position: [-1.75, 3.03, 0] as [number, number, number] },
+    { name: "Hospital_before", position: [-3.5, 0, 0] as [number, number, number] },
+    { name: "Hypertension", position: [-1.75, -3.03, 0] as [number, number, number] },
+    { name: "Infection_Freq", position: [1.75, -3.03, 0] as [number, number, number] },
   ];
 
   // Central patient position

@@ -14,6 +14,8 @@ export default function DashboardPage() {
     Gender: "M",
     Diabetes: false,
     Hospital_before: true,
+    Hypertension: false,
+    Infection_Freq: 0,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +167,36 @@ export default function DashboardPage() {
               <label htmlFor="hospital" className="text-xs text-slate-400">
                 Previous Hospitalization
               </label>
+            </div>
+
+            {/* Hypertension */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="hypertension"
+                checked={patientProfile.Hypertension}
+                onChange={(e) => handlePatientProfileChange("Hypertension", e.target.checked)}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-800 focus:ring-2 focus:ring-cyan-500"
+              />
+              <label htmlFor="hypertension" className="text-xs text-slate-400">
+                Hypertension
+              </label>
+            </div>
+
+            {/* Infection Frequency */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">
+                Infection Frequency (Past Year)
+              </label>
+              <input
+                type="range"
+                value={patientProfile.Infection_Freq}
+                onChange={(e) => handlePatientProfileChange("Infection_Freq", parseInt(e.target.value) || 0)}
+                min="0"
+                max="10"
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+              />
+              <p className="text-xs text-slate-500 mt-1 text-center">{patientProfile.Infection_Freq} infections</p>
             </div>
           </div>
 

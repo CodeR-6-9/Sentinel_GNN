@@ -7,6 +7,8 @@ export interface PatientProfile {
   Gender: string;
   Diabetes: boolean;
   Hospital_before: boolean;
+  Hypertension: boolean;
+  Infection_Freq: number;
 }
 
 export interface AnalyzeResponse {

@@ -7,18 +7,52 @@ def mock_gnn_call(isolate_id: str, patient_profile: dict) -> dict:
     Mock GNN prediction function for epidemiological patient graph.
     In production, this would call the actual PyTorch patient risk model.
     
+    Considers patient risk factors:
+    - Age, Diabetes, Hypertension, Hospital_before → baseline resistance risk
+    - Infection_Freq → high infection frequency increases resistance risk
+    
     Args:
         isolate_id: Bacterial isolate identifier.
-        patient_profile: Dict with Age, Gender, Diabetes, Hospital_before.
+        patient_profile: Dict with Age, Gender, Diabetes, Hypertension, Hospital_before, Infection_Freq.
         
     Returns:
         Dictionary with prediction results including confidence and contributing risk factors.
     """
+    # Simulate risk calculation based on patient factors
+    risk_score = 0.0
+    contributing_factors = []
+    
+    # Calculate risk based on patient profile
+    if patient_profile.get("Hospital_before"):
+        risk_score += 0.25
+        contributing_factors.append("Hospital_before")
+    
+    if patient_profile.get("Diabetes"):
+        risk_score += 0.20
+        contributing_factors.append("Diabetes")
+    
+    if patient_profile.get("Hypertension"):
+        risk_score += 0.15
+        contributing_factors.append("Hypertension")
+    
+    infection_freq = patient_profile.get("Infection_Freq", 0)
+    if infection_freq > 3:
+        risk_score += 0.20
+        contributing_factors.append("High_Infection_Freq")
+    
+    age = patient_profile.get("Age", 50)
+    if age > 70:
+        risk_score += 0.10
+        contributing_factors.append("Advanced_Age")
+    
+    # Normalize confidence to 0.7-0.95 range
+    confidence = min(0.95, max(0.70, risk_score + 0.40))
+    
     return {
-        "is_resistant": True,
-        "prediction": "Resistant",
-        "confidence": 0.92,
-        "risk_factors": ["Hospital_before", "Diabetes"]  # Epidemiological risk factors
+        "is_resistant": confidence > 0.80,
+        "prediction": "Resistant" if confidence > 0.80 else "Susceptible",
+        "confidence": round(confidence, 2),
+        "risk_factors": contributing_factors
     }
 
 
