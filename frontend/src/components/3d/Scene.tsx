@@ -1,61 +1,147 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Sphere, Line, OrbitControls, Text } from "@react-three/drei";
 import * as THREE from "three";
 
-interface RiskNodeProps {
+/**
+ * CentralPatientNode Component
+ * Renders the large central sphere representing the current patient.
+ * Gently rotates to indicate the focal point of the analysis.
+ */
+function CentralPatientNode() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
+
+  // Gentle pulsing and rotation
+  useFrame(({ clock }) => {
+    if (meshRef.current) {
+      meshRef.current.rotation.x += 0.002;
+      meshRef.current.rotation.y += 0.003;
+    }
+    if (glowRef.current) {
+      const scale = 1 + Math.sin(clock.getElapsedTime() * 1.5) * 0.15;
+      glowRef.current.scale.set(scale, scale, scale);
+    }
+  });
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* Core patient sphere - white with cyan emissive */}
+      <Sphere ref={meshRef} args={[0.6, 64, 64]}>
+        <meshStandardMaterial
+          color="#e2e8f0"
+          emissive="#38bdf8"
+          emissiveIntensity={0.5}
+          metalness={0.3}
+          roughness={0.3}
+        />
+      </Sphere>
+
+      {/* Breathing glow aura around patient */}
+      <Sphere ref={glowRef} args={[0.75, 32, 32]}>
+        <meshBasicMaterial
+          color="#38bdf8"
+          transparent
+          opacity={0.08}
+        />
+      </Sphere>
+
+      {/* Label: "Current Patient" */}
+      <Text
+        position={[0, 1.1, 0]}
+        fontSize={0.25}
+        color="#e2e8f0"
+        anchorX="center"
+        anchorY="middle"
+        fontWeight="800"
+        maxWidth={2}
+      >
+        Current Patient
+      </Text>
+    </group>
+  );
+}
+
+interface RiskFactorNodeProps {
   position: [number, number, number];
-  color: string;
   name: string;
-  isFlagged: boolean;
+  isContributing: boolean;
 }
 
 /**
- * RiskNode Component
- * Renders a single epidemiological risk factor node in the 3D canvas with medical aesthetic.
- * If flagged, displays with a calm pink glow; otherwise, clean soft blue.
+ * RiskFactorNode Component
+ * Renders a single epidemiological risk factor sphere.
+ * Pulses with pink when flagged (contributing to resistance), calm blue otherwise.
  */
-function RiskNode({ position, color, name, isFlagged }: RiskNodeProps) {
+function RiskFactorNode({ position, name, isContributing }: RiskFactorNodeProps) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
 
-  // Gentle rotation animation
-  useFrame(() => {
+  useFrame(({ clock }) => {
     if (meshRef.current) {
-      meshRef.current.rotation.x += 0.003;
-      meshRef.current.rotation.y += 0.005;
+      meshRef.current.rotation.x += 0.002;
+      meshRef.current.rotation.y += 0.004;
+    }
+
+    // Pulse animation for contributing factors
+    if (isContributing && glowRef.current) {
+      const pulseIntensity = Math.sin(clock.getElapsedTime() * 2) * 0.5 + 0.5;
+      glowRef.current.material.opacity = 0.2 * pulseIntensity;
+    }
+
+    // Emissive intensity pulse for contributing factors
+    if (isContributing && meshRef.current) {
+      const emissivePulse = Math.sin(clock.getElapsedTime() * 2.5) * 0.3 + 0.6;
+      (meshRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity =
+        emissivePulse;
     }
   });
 
   return (
     <group position={position}>
       {/* Core sphere */}
-      <Sphere ref={meshRef} args={[isFlagged ? 0.4 : 0.3, 32, 32]}>
+      <Sphere ref={meshRef} args={[0.35, 48, 48]}>
         <meshStandardMaterial
-          color={isFlagged ? "#ffffff" : "#38bdf8"}
-          emissive={isFlagged ? "#f472b6" : "#000000"}
-          emissiveIntensity={isFlagged ? 0.8 : 0}
-          metalness={0.4}
-          roughness={0.4}
+          color={isContributing ? "#ffffff" : "#38bdf8"}
+          emissive={isContributing ? "#f472b6" : "#0f172a"}
+          emissiveIntensity={isContributing ? 0.6 : 0.1}
+          metalness={0.5}
+          roughness={0.3}
         />
       </Sphere>
 
-      {/* Crayon-like aura for flagged risk factors */}
-      {isFlagged && (
-        <Sphere args={[0.55, 32, 32]}>
-          <meshBasicMaterial color="#f472b6" transparent opacity={0.15} />
+      {/* Glowing aura for contributing factors */}
+      {isContributing && (
+        <Sphere ref={glowRef} args={[0.52, 32, 32]}>
+          <meshBasicMaterial
+            color="#f472b6"
+            transparent
+            opacity={0.2}
+          />
         </Sphere>
       )}
 
-      {/* Label positioned above the sphere */}
+      {/* Subtle glow for non-contributing factors */}
+      {!isContributing && (
+        <Sphere args={[0.48, 32, 32]}>
+          <meshBasicMaterial
+            color="#38bdf8"
+            transparent
+            opacity={0.08}
+          />
+        </Sphere>
+      )}
+
+      {/* Risk Factor Label */}
       <Text
-        position={[0, isFlagged ? 0.7 : 0.6, 0]}
-        fontSize={0.18}
-        color={isFlagged ? "#f472b6" : "#e2e8f0"}
+        position={[0, isContributing ? 0.65 : 0.6, 0]}
+        fontSize={0.16}
+        color={isContributing ? "#f472b6" : "#cbd5e1"}
         anchorX="center"
         anchorY="middle"
-        fontWeight="600"
+        fontWeight="700"
         maxWidth={1}
       >
         {name}
@@ -64,87 +150,129 @@ function RiskNode({ position, color, name, isFlagged }: RiskNodeProps) {
   );
 }
 
+interface EdgeProps {
+  from: [number, number, number];
+  to: [number, number, number];
+  isActive: boolean;
+}
+
+/**
+ * Edge Component
+ * Renders a line connecting central patient to risk factor.
+ * Glows pink when the risk factor is contributing, subtle blue otherwise.
+ */
+function Edge({ from, to, isActive }: EdgeProps) {
+  const lineRef = useRef<THREE.LineSegments>(null);
+
+  useFrame(({ clock }) => {
+    if (isActive && lineRef.current) {
+      const glow = Math.sin(clock.getElapsedTime() * 2.5) * 0.25 + 0.5;
+      const material = lineRef.current.material as THREE.LineBasicMaterial;
+      material.opacity = 0.4 + glow * 0.3;
+    }
+  });
+
+  return (
+    <Line
+      ref={lineRef}
+      points={[from, to]}
+      color={isActive ? "#f472b6" : "#475569"}
+      lineWidth={isActive ? 1.5 : 0.8}
+      transparent
+      opacity={isActive ? 0.6 : 0.25}
+    />
+  );
+}
+
 interface SceneProps {
-  flaggedGenes?: string[];  // Reused prop name for backward compatibility, but now contains risk factors
+  flaggedGenes?: string[];  // Contains risk factor names that are contributing
 }
 
 /**
  * Scene Component
- * Renders a premium medical-grade 3D epidemiological patient risk network visualization.
+ * Renders a professional epidemiological patient risk profile visualization.
+ * Central patient node connected to 4 risk factor nodes with interactive visualization.
  */
 export default function Scene({ flaggedGenes = [] }: SceneProps) {
-  // Define epidemiological risk factor nodes with positions (including central "hub" node)
-  // These represent common epidemiological factors: Age, Gender, Comorbidities, Hospital History
-  const riskNodes = [
-    { position: [-3, 2, 0] as [number, number, number], name: "Hospital_before", color: "#38bdf8" },
-    { position: [3, 2, 0] as [number, number, number], name: "Age", color: "#38bdf8" },
-    { position: [-1.5, -2, 2] as [number, number, number], name: "Diabetes", color: "#38bdf8" },
-    { position: [1.5, -2, -2] as [number, number, number], name: "Gender", color: "#38bdf8" },
-    { position: [0, 0, -1] as [number, number, number], name: "Patient Risk Profile", color: "#38bdf8" }, // Central hub
+  // Define the 4 epidemiological risk factors with positions around central patient
+  const riskFactors = [
+    { name: "Age", position: [3.5, 0, 0] as [number, number, number] },
+    { name: "Gender", position: [-3.5, 0, 0] as [number, number, number] },
+    { name: "Diabetes", position: [0, 3.5, 0] as [number, number, number] },
+    { name: "Hospital_before", position: [0, -3.5, 0] as [number, number, number] },
   ];
 
-  // Define connections between nodes (all connect to central hub)
-  const connections = [
-    [riskNodes[0].position, riskNodes[4].position], // Hospital_before -> Patient Risk Profile
-    [riskNodes[1].position, riskNodes[4].position], // Age -> Patient Risk Profile
-    [riskNodes[2].position, riskNodes[4].position], // Diabetes -> Patient Risk Profile
-    [riskNodes[3].position, riskNodes[4].position], // Gender -> Patient Risk Profile
-    [riskNodes[0].position, riskNodes[1].position], // Hospital_before <-> Age
-    [riskNodes[2].position, riskNodes[3].position], // Diabetes <-> Gender
-  ];
+  // Central patient position
+  const centerPos: [number, number, number] = [0, 0, 0];
 
   return (
     <Canvas
-      camera={{ position: [0, 0, 9], fov: 72 }}
-      className="w-full h-full bg-slate-950"
+      camera={{ position: [0, 0, 12], fov: 60 }}
+      className="w-full h-full bg-gradient-to-b from-slate-950 to-slate-900"
     >
-      {/* Ambient light for base illumination */}
-      <ambientLight intensity={0.5} />
+      {/* Lighting Setup */}
+      
+      {/* Ambient light - base illumination */}
+      <ambientLight intensity={0.4} />
 
-      {/* Primary white light from above-right */}
-      <pointLight position={[8, 8, 8]} intensity={0.9} color="#ffffff" />
-
-      {/* Soft blue accent light */}
-      <pointLight position={[10, 10, 10]} intensity={0.5} color="#38bdf8" />
-
-      {/* Soft pink back-light for medical aesthetic */}
-      <pointLight position={[-10, -10, -10]} intensity={0.5} color="#f472b6" />
-
-      {/* Risk Factor Nodes */}
-      {riskNodes.map((node, index) => (
-        <RiskNode
-          key={index}
-          position={node.position}
-          color={node.color}
-          name={node.name}
-          isFlagged={flaggedGenes.includes(node.name)}
-        />
-      ))}
-
-      {/* Connection Lines - thin, crisp white */}
-      {connections.map((connection, index) => (
-        <Line
-          key={index}
-          points={connection}
-          color="#ffffff"
-          lineWidth={0.5}
-          transparent
-          opacity={0.3}
-        />
-      ))}
-
-      {/* Interactive Controls - calm, clinical rotation */}
-      <OrbitControls
-        autoRotate
-        autoRotateSpeed={0.5}
-        enableZoom
-        enablePan
-        maxDistance={20}
-        minDistance={4}
+      {/* Primary white directional light */}
+      <directionalLight
+        position={[10, 10, 10]}
+        intensity={0.8}
+        color="#ffffff"
+        castShadow
       />
 
-      {/* Subtle background grid */}
-      <gridHelper args={[30, 30]} position={[0, -4, 0]} />
+      {/* Soft cyan accent light from left */}
+      <pointLight position={[-12, 5, 8]} intensity={0.4} color="#38bdf8" />
+
+      {/* Soft pink accent light from right */}
+      <pointLight position={[12, -5, 8]} intensity={0.3} color="#f472b6" />
+
+      {/* Cool blue back-light */}
+      <pointLight position={[0, 0, -15]} intensity={0.25} color="#1e293b" />
+
+      {/* Scene Content */}
+      
+      {/* Central Patient Node */}
+      <CentralPatientNode />
+
+      {/* Risk Factor Nodes */}
+      {riskFactors.map((factor) => (
+        <RiskFactorNode
+          key={factor.name}
+          position={factor.position}
+          name={factor.name}
+          isContributing={flaggedGenes.includes(factor.name)}
+        />
+      ))}
+
+      {/* Connecting Edges (Center to Each Risk Factor) */}
+      {riskFactors.map((factor) => (
+        <Edge
+          key={`edge-${factor.name}`}
+          from={centerPos}
+          to={factor.position}
+          isActive={flaggedGenes.includes(factor.name)}
+        />
+      ))}
+
+      {/* Interactive Controls */}
+      <OrbitControls
+        autoRotate
+        autoRotateSpeed={0.8}
+        enableZoom
+        enablePan
+        maxDistance={25}
+        minDistance={6}
+        rotateSpeed={0.5}
+      />
+
+      {/* Subtle background grid for depth reference */}
+      <gridHelper
+        args={[40, 40]}
+        position={[0, -5, 0]}
+      />
     </Canvas>
   );
 }
