@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import React, { useRef, useState, useEffect } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Sphere, Line, OrbitControls, Text } from "@react-three/drei";
 import * as THREE from "three";
 
@@ -14,12 +14,8 @@ function CentralPatientNode() {
   const meshRef = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Mesh>(null);
 
-  // Gentle pulsing and rotation
+  // Gentle pulsing (no rotation)
   useFrame(({ clock }) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.x += 0.002;
-      meshRef.current.rotation.y += 0.003;
-    }
     if (glowRef.current) {
       const scale = 1 + Math.sin(clock.getElapsedTime() * 1.5) * 0.15;
       glowRef.current.scale.set(scale, scale, scale);
@@ -80,11 +76,6 @@ function RiskFactorNode({ position, name, isContributing }: RiskFactorNodeProps)
   const glowRef = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.x += 0.002;
-      meshRef.current.rotation.y += 0.004;
-    }
-
     // Pulse animation for contributing factors
     if (isContributing && glowRef.current) {
       const pulseIntensity = Math.sin(clock.getElapsedTime() * 2) * 0.5 + 0.5;
@@ -210,8 +201,9 @@ export default function Scene({ flaggedGenes = [] }: SceneProps) {
 
   return (
     <Canvas
-      camera={{ position: [0, 0, 12], fov: 60 }}
+      camera={{ position: [8, 8, 8], fov: 50 }}
       className="w-full h-full bg-gradient-to-b from-slate-950 to-slate-900"
+      onWheel={(e) => e.preventDefault()}
     >
       {/* Lighting Setup */}
       
@@ -260,15 +252,17 @@ export default function Scene({ flaggedGenes = [] }: SceneProps) {
         />
       ))}
 
-      {/* Interactive Controls */}
+      {/* Interactive Controls - Click-to-Rotate with Isometric View */}
       <OrbitControls
-        autoRotate
-        autoRotateSpeed={0.8}
-        enableZoom
-        enablePan
-        maxDistance={25}
-        minDistance={6}
-        rotateSpeed={0.5}
+        autoRotate={false}
+        enableZoom={false}
+        enablePan={false}
+        minDistance={15}
+        maxDistance={15}
+        rotateSpeed={1}
+        dampingFactor={0.05}
+        autoRotateSpeed={0}
+        enableDamping={true}
       />
 
       {/* Subtle background grid for depth reference */}

@@ -1,0 +1,11 @@
+Location,IMIPENEM,CEFTAZIDIME,GENTAMICIN,AUGMENTIN,CIPROFLOXACIN
+ICU_Ward,0.15,0.22,0.18,0.45,0.68
+General_Ward,0.12,0.18,0.14,0.38,0.52
+Emergency_Dept,0.18,0.25,0.21,0.48,0.71
+Orthopedic_Unit,0.08,0.12,0.09,0.28,0.35
+Pediatric_Ward,0.05,0.08,0.06,0.18,0.22
+Surgery_Ward,0.22,0.32,0.28,0.55,0.75
+Respiratory_Unit,0.14,0.20,0.16,0.42,0.61
+Cardiology_Ward,0.10,0.14,0.11,0.32,0.42
+Infectious_Disease_Ward,0.20,0.28,0.24,0.52,0.76
+Dialysis_Center,0.25,0.35,0.30,0.58,0.82

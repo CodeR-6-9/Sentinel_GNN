@@ -80,16 +80,14 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="w-screen h-screen bg-slate-950 text-white overflow-hidden">
-      {/* Grid Layout: 3D Canvas (Left) + Control Panel (Right) */}
-      <div className="grid grid-cols-3 gap-6 h-full p-6">
-        {/* Left Side: 3D Gene Network */}
-        <div className="col-span-2 h-full rounded-lg overflow-hidden border border-slate-700 shadow-2xl">
-          <Scene flaggedGenes={riskFactors} />
-        </div>
+    <main className="w-screen h-screen bg-slate-950 text-white flex overflow-hidden">
+      {/* Left Side: Fixed 3D Gene Network */}
+      <div className="flex-1 rounded-lg overflow-hidden border border-slate-700 shadow-2xl m-6 mr-0">
+        <Scene flaggedGenes={riskFactors} />
+      </div>
 
-        {/* Right Side: Control Panel */}
-        <div className="col-span-1 flex flex-col gap-4 h-full overflow-y-auto">
+      {/* Right Side: Scrollable Control Panel */}
+      <div className="flex-1 overflow-y-auto flex flex-col gap-4 p-6 pr-6">
           {/* Header */}
           <div className="bg-gradient-to-r from-cyan-600 to-blue-600 rounded-lg p-4 shadow-lg">
             <h1 className="text-xl font-bold">Sentinel-GNN</h1>
@@ -273,11 +271,10 @@ export default function DashboardPage() {
           )}
 
           {/* Agent Trace Section */}
-          <div className="flex-1 min-h-0">
+          <div className="min-h-[320px] bg-slate-900/60 rounded-lg border border-slate-600 shadow-inner">
             <AgentTrace traces={traceList} />
           </div>
         </div>
-      </div>
-    </main>
+      </main>
   );
 }
