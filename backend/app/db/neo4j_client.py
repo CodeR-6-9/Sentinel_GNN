@@ -1,14 +1,23 @@
+import os
+from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
-# ⚠️ PASTE YOUR NEO4J CREDENTIALS HERE
-URI = "neo4j+s://ec88683c.databases.neo4j.io"
-AUTH = ("neo4j", "LD9Pey_3gguoA35o8CPss_cckS6jJV1sVrBABsN-mJ8")
+
+load_dotenv()
+
+URI = os.getenv("NEO4J_URI")
+USERNAME = os.getenv("NEO4J_USERNAME")
+PASSWORD = os.getenv("NEO4J_PASSWORD")
 
 def verify_resistance_mechanisms(drug_class: str = "fluoroquinolone antibiotic"):
     """
     Queries the CARD database to find HOW the bacteria is resisting the drug.
     """
-    driver = GraphDatabase.driver(URI, auth=AUTH)
+    # Safety check: Ensure environment variables are loaded
+    if not all([URI, USERNAME, PASSWORD]):
+        return "Configuration error: Missing Neo4j credentials in environment variables."
+        
+    driver = GraphDatabase.driver(URI, auth=(USERNAME, PASSWORD))
     
     query = """
     MATCH (g:Gene)-[:CONFERS_RESISTANCE_TO]->(d:DrugClass {name: $drug_class})

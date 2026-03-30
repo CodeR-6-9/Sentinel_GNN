@@ -4,7 +4,7 @@ from typing import List, TypedDict
 from langgraph.graph import StateGraph, END
 
 # Import our Engines
-from app.models.gnn import run_gnn_inference
+from app.ml.gnn import run_gnn_inference
 from app.db.neo4j_client import verify_resistance_mechanisms
 
 app = FastAPI(title="Sentinel-GNN Agent API")
