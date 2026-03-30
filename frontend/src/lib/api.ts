@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 export interface PatientProfile {
   Age: number;
@@ -21,40 +21,49 @@ export interface AnalyzeResponse {
     risk_factors: string[];
   };
   kg_verification: {
-    risk_factors_validated: boolean;
-    factors_verified: string[];
-    clinical_guideline: string;
-    guidelines_matched: number;
-    confidence_score: number;
-    additional_context: string;
+    validated: boolean;
+    reason: string;
+    mechanisms_found: number;
+    genes: string[];
+    mechanisms?: string[];
+    antibiotic?: string;
+    note?: string;
   };
   strategy: string;
   trace: string[];
 }
 
-/**
- * Sends a POST request to the backend API to analyze a bacterial isolate with patient context.
- *
- * @param isolateId - The unique identifier of the bacterial isolate
- * @param patientProfile - Patient demographics for epidemiological risk assessment
- * @returns Promise resolving to the analysis response with epidemiological context
- * @throws Error if the API request fails
- */
 export async function analyzeIsolate(
   isolateId: string,
   patientProfile: PatientProfile
 ): Promise<AnalyzeResponse> {
+  console.log("🚦 1. analyzeIsolate function triggered!");
+  console.log(`🎯 2. Target Backend URL: ${API_BASE_URL}/api/analyze`);
+  console.log("📦 3. Payload:", { isolate_id: isolateId, patient_profile: patientProfile });
+
   try {
     const response = await axios.post<AnalyzeResponse>(
       `${API_BASE_URL}/api/analyze`,
       {
         isolate_id: isolateId,
         patient_profile: patientProfile,
+      },
+      {
+        // Force timeout after 10 seconds so it doesn't hang infinitely
+        timeout: 10000, 
       }
     );
+    
+    console.log("✅ 4. Response received from Python:", response.data);
     return response.data;
   } catch (error) {
-    console.error("Error analyzing isolate:", error);
+    if (axios.isAxiosError(error)) {
+        console.error("❌ AXIOS ERROR:", error.message);
+        console.error("❌ STATUS:", error.response?.status);
+        console.error("❌ DETAILS:", error.response?.data);
+    } else {
+        console.error("❌ UNKNOWN ERROR:", error);
+    }
     throw error;
   }
 }

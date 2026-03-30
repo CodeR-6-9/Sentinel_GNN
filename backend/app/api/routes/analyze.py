@@ -20,25 +20,17 @@ from pydantic import BaseModel, Field
 from neo4j import GraphDatabase
 from neo4j.exceptions import ServiceUnavailable, AuthError
 from langgraph.graph import StateGraph, END
+import sys
 
-try:
-    from gnn import inference
-except ImportError:
-    # Mock inference for development
-    def inference(age, gender, diabetes, hospital_before, hypertension, infection_freq):
-        """Mock GNN inference function for development."""
-        confidence = 0.82
-        prediction = "Resistant" if hospital_before or infection_freq > 3 else "Susceptible"
-        driving_factors = []
-        if hospital_before:
-            driving_factors.append("Hospital_before")
-        if diabetes:
-            driving_factors.append("Diabetes")
-        if hypertension:
-            driving_factors.append("Hypertension")
-        if infection_freq > 3:
-            driving_factors.append("High_Infection_Freq")
-        return prediction, confidence, driving_factors
+# Resolve the absolute path to the backend root directory (3 levels up)
+backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+
+# Add the backend root to sys.path to ensure module discovery
+if backend_root not in sys.path:
+    sys.path.insert(0, backend_root)
+
+# Strictly import the production inference function (no fallbacks)
+from gnn import run_gnn_inference
 
 # ============================================================================
 # LOGGING SETUP
@@ -132,12 +124,13 @@ class Neo4jConnection:
             # For neo4j+s (AuraDB), don't pass encrypted parameter
             # For bolt://, encryption can be controlled
             if self.uri.startswith("neo4j+s://") or self.uri.startswith("bolt+s://"):
-                self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+                self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password), connection_timeout=3.0)
             else:
                 self.driver = GraphDatabase.driver(
                     self.uri,
                     auth=(self.user, self.password),
-                    encrypted=False
+                    encrypted=False,
+                    connection_timeout=3.0
                 )
             self.driver.verify_connectivity()
             logger.info(f"Neo4j connected: {self.uri}")
@@ -172,12 +165,16 @@ class Neo4jConnection:
 
 def predictor_node(state: AgentState) -> AgentState:
     """
-    Node 1: ML Predictor Agent
+    Node 1: ML Predictor Agent - SentinelMLP with Gradient-Based XAI
     
-    Calls PyTorch MLP inference with patient epidemiological profile.
-    Business Logic:
-    - If Resistant AND 0.77 <= confidence <= 0.85: Log moderate confidence warning
-    - Maps driving_factors to ml_prediction['risk_factors'] for UI visualization
+    Calls production PyTorch MLP inference with patient epidemiological profile.
+    
+    Feature Mapping:
+    - Converts Pydantic PatientProfile to 6-value list: 
+      [Age, Gender (1.0/2.0/3.0), Diabetes, Hospital_before, Hypertension, Infection_Freq]
+    - Calls run_gnn_inference() which returns:
+      {prediction (0/1), probability, driving_factors, threshold_used}
+    - Converts prediction 1→"Resistant", 0→"Susceptible"
     
     Args:
         state: Current AgentState from LangGraph
@@ -186,50 +183,70 @@ def predictor_node(state: AgentState) -> AgentState:
         Updated AgentState with ml_prediction populated and trace appended
     """
     try:
+        print("\n📊 [DEBUG] Predictor Node: Starting ML inference...")
         patient_profile = state["patient_profile"]
         isolate_id = state["isolate_id"]
+        print(f"  Isolate: {isolate_id}")
         
-        # Extract patient features for inference
-        age = patient_profile.get("Age", 50)
-        gender = patient_profile.get("Gender", "Other")
-        diabetes = patient_profile.get("Diabetes", False)
-        hospital_before = patient_profile.get("Hospital_before", False)
-        hypertension = patient_profile.get("Hypertension", False)
-        infection_freq = patient_profile.get("Infection_Freq", 0)
+        # Extract patient features from PatientProfile
+        age = float(patient_profile.get("Age", 50))
+        gender_raw = patient_profile.get("Gender", "Other")
+        diabetes = float(patient_profile.get("Diabetes", False))
+        hospital_before = float(patient_profile.get("Hospital_before", False))
+        hypertension = float(patient_profile.get("Hypertension", False))
+        infection_freq = float(patient_profile.get("Infection_Freq", 0))
         
-        # Call PyTorch MLP inference
-        logger.info(f"Invoking MLP inference for {isolate_id}")
-        prediction, confidence, driving_factors = inference(
-            age=age,
-            gender=gender,
-            diabetes=diabetes,
-            hospital_before=hospital_before,
-            hypertension=hypertension,
-            infection_freq=infection_freq
-        )
+        # Map Gender to numerical encoding:
+        # "M" or "Male" → 1.0, "F" or "Female" → 2.0, "O" or "Other" → 3.0
+        gender_mapping = {
+            "M": 1.0, "Male": 1.0,
+            "F": 2.0, "Female": 2.0,
+            "O": 3.0, "Other": 3.0
+        }
+        gender_encoded = gender_mapping.get(gender_raw, 3.0)  # Default to 3.0 (Other)
+        
+        # Prepare 6-feature list for production model
+        features = [age, gender_encoded, diabetes, hospital_before, hypertension, infection_freq]
+        
+        # Call production SentinelMLP inference
+        logger.info(f"Invoking SentinelMLP for {isolate_id}")
+        print(f"  Features (6-element): [Age={age}, Gender={gender_encoded}, Diabetes={diabetes}, Hospital_before={hospital_before}, Hypertension={hypertension}, Infection_Freq={infection_freq}]")
+        print(f"  → Calling run_gnn_inference()...")
+        result = run_gnn_inference(features)
+        print(f"  ← Result: prediction={result.get('prediction')}, confidence={result.get('probability'):.2%}")
+        
+        # Extract results from model output
+        prediction_code = result["prediction"]  # 1 (Resistant) or 0 (Susceptible)
+        probability = result["probability"]
+        driving_factors = result["driving_factors"]
+        
+        # Convert prediction code to string
+        prediction_str = "Resistant" if prediction_code == 1 else "Susceptible"
         
         # Populate ML prediction results
         state["ml_prediction"] = {
-            "is_resistant": prediction == "Resistant",
-            "prediction": prediction,
-            "confidence": float(confidence),
+            "is_resistant": prediction_code == 1,
+            "prediction": prediction_str,
+            "confidence": float(probability),
             "risk_factors": driving_factors if isinstance(driving_factors, list) else []
         }
         
         # Business Logic: Moderate confidence warning
-        if prediction == "Resistant" and 0.77 <= confidence <= 0.85:
+        if prediction_code == 1 and 0.77 <= probability <= 0.85:
             warning_msg = (
                 f"Model detected resistance patterns with moderate confidence "
-                f"({confidence:.2f}); clinical correlation advised."
+                f"({probability:.2%}); clinical correlation advised."
             )
             state["trace"].append(warning_msg)
             logger.warning(warning_msg)
         
         # Standard trace log
+        risk_factors_str = ', '.join(driving_factors) if driving_factors else 'None'
         state["trace"].append(
-            f"✓ ML Predictor: {prediction} (confidence: {confidence:.2%}) | "
-            f"Driving factors: {', '.join(driving_factors) if driving_factors else 'None'}"
+            f"✓ ML Predictor: {prediction_str} (confidence: {probability:.2%}) | "
+            f"Driving factors: {risk_factors_str}"
         )
+        print(f"✅ [DEBUG] Predictor Node: Complete")
         
         return state
     
@@ -271,8 +288,10 @@ def verifier_node(state: AgentState) -> AgentState:
         Updated AgentState with kg_verification populated and trace appended
     """
     try:
+        print("\n🔍 [DEBUG] Verifier Node: Validating against Neo4j CARD database...")
         is_resistant = state["ml_prediction"].get("is_resistant", False)
         isolate_id = state["isolate_id"]
+        print(f"  Isolate: {isolate_id}, Is_resistant: {is_resistant}")
         
         if not is_resistant:
             state["kg_verification"] = {
@@ -287,15 +306,31 @@ def verifier_node(state: AgentState) -> AgentState:
             return state
         
         # Connect to Neo4j and query CARD database
+        print(f"  Attempting Neo4j connection (timeout: 3.0s)...")
         with Neo4jConnection() as neo4j:
+            if neo4j.driver is None:
+                print(f"  ⚠️  Neo4j connection failed - graceful fallback")
+                state["kg_verification"] = {
+                    "validated": False,
+                    "reason": "Neo4j connection unavailable",
+                    "mechanisms_found": 0,
+                    "genes": []
+                }
+                state["trace"].append("⚠ Verifier: Neo4j connection failed (graceful fallback)")
+                print(f"✅ [DEBUG] Verifier Node: Complete (no-op due to connection failure)")
+                return state
+            
+            print(f"  ✅ Neo4j connection established")
             cypher_query = """
-            MATCH (p:Pathogen {name: $isolate_id})-[:CARRIES_GENE]->(g)
-              -[:CONFERS_RESISTANCE_TO]->(d:Antibiotic {name: "CIPROFLOXACIN"})
+            MATCH (g:Gene)-[:CONFERS_RESISTANCE_TO]->(d:DrugClass) 
+            WHERE d.name CONTAINS 'CIPROFLOXACIN'
             RETURN g.name AS Gene, g.mechanism AS Mechanism
             LIMIT 3
             """
+            print(f"  → Executing Cypher query: MATCH (g:Gene)-[:CONFERS_RESISTANCE_TO]->(d:DrugClass)")
             
-            results = neo4j.query(cypher_query, {"isolate_id": isolate_id})
+            results = neo4j.query(cypher_query, {})
+            print(f"  ← Query result: {len(results)} resistance mechanisms found")
         
         if results:
             # Found biological mechanisms in CARD
@@ -317,6 +352,7 @@ def verifier_node(state: AgentState) -> AgentState:
                 f"✓ Verifier: Biological validation complete | "
                 f"Mechanisms: {mechanism_str} | Genes: {gene_str}"
             )
+            print(f"  ✅ Found {len(results)} mechanisms")
         else:
             # No mechanisms found - possible novel resistance
             state["kg_verification"] = {
@@ -331,7 +367,9 @@ def verifier_node(state: AgentState) -> AgentState:
                 f"⚠ Verifier: No known CARD mechanisms found for {isolate_id}. "
                 f"Possible novel resistance."
             )
+            print(f"  ⚠️ No CARD mechanisms found (possible novel resistance)")
         
+        print(f"✅ [DEBUG] Verifier Node: Complete")
         return state
     
     except Exception as e:
@@ -372,7 +410,9 @@ def strategist_node(state: AgentState) -> AgentState:
         Updated AgentState with strategy populated and trace appended
     """
     try:
+        print("\n💊 [DEBUG] Strategist Node: Analyzing local epidemiological data...")
         prediction = state["ml_prediction"].get("prediction", "Unknown")
+        print(f"  ML Prediction: {prediction}")
         
         # If not resistant, provide conservative recommendation
         if prediction != "Resistant":
@@ -385,15 +425,13 @@ def strategist_node(state: AgentState) -> AgentState:
             )
             return state
         
-        # Load local dataset
-        csv_path = "data/location_stats.csv"
-        
-        # Try both relative paths (from backend dir or from project root)
-        if not os.path.exists(csv_path):
-            csv_path = "backend/data/location_stats.csv"
+        # Load local dataset using absolute backend_root path
+        csv_path = os.path.join(backend_root, "data", "location_stats.csv")
+        print(f"  CSV Path: {csv_path}")
         
         if not os.path.exists(csv_path):
             logger.warning(f"CSV not found at {csv_path}")
+            print(f"  ❌ CSV file not found")
             state["strategy"] = (
                 "Clinical Recommendation: Refer to institutional antibiograms. "
                 "Local dataset unavailable."
@@ -403,15 +441,20 @@ def strategist_node(state: AgentState) -> AgentState:
             )
             return state
         
+        print(f"  ✅ CSV file loaded successfully")
+        
         # Load and analyze resistance data
+        print(f"  → Reading CSV file...")
         df = pd.read_csv(csv_path)
         logger.info(f"Loaded dataset with {len(df)} records from {csv_path}")
+        print(f"  ✅ Dataset loaded: {len(df)} location records")
         
         # Define antibiotic columns (exclude Location and CIPROFLOXACIN)
         drug_columns = [
             col for col in df.columns
             if col not in ["Location", "CIPROFLOXACIN"]
         ]
+        print(f"  Available alternatives: {drug_columns}")
         
         if not drug_columns:
             state["strategy"] = (
@@ -445,6 +488,10 @@ def strategist_node(state: AgentState) -> AgentState:
         
         # Find safest alternative (lowest resistance)
         if drug_resistance_means:
+            print(f"  → Analyzing resistance rates across {len(drug_resistance_means)} alternatives:")
+            for drug, rate in sorted(drug_resistance_means.items(), key=lambda x: x[1]):
+                print(f"     • {drug}: {rate:.1f}%")
+            
             safest_drug = min(
                 drug_resistance_means.items(),
                 key=lambda x: x[1]
@@ -453,6 +500,8 @@ def strategist_node(state: AgentState) -> AgentState:
             
             # Format percentage to 1 decimal place (e.g., "22.6%")
             resistance_str = f"{resistance_pct:.1f}%"
+            
+            print(f"  ✅ Recommendation: {drug_name} ({resistance_str} local resistance)")
             
             state["strategy"] = (
                 f"Clinical Recommendation: CIPROFLOXACIN resistance detected. "
@@ -464,13 +513,16 @@ def strategist_node(state: AgentState) -> AgentState:
                 f"✓ Strategist: Recommended alternative: {drug_name} "
                 f"(local resistance: {resistance_str})"
             )
+            print(f"  ✅ Recommended: {drug_name} ({resistance_str})")
         else:
             state["strategy"] = (
                 "Clinical Recommendation: Resistance detected. "
                 "Refer to institutional antibiogram and/or infectious disease specialist."
             )
             state["trace"].append("⚠ Strategist: Unable to calculate drug resistance means")
+            print(f"  ⚠️ Unable to calculate resistance means")
         
+        print(f"✅ [DEBUG] Strategist Node: Complete")
         return state
     
     except Exception as e:
@@ -532,7 +584,7 @@ sentinel_graph = build_sentinel_graph()
 router = APIRouter()
 
 
-@router.post("/", response_model=AnalyzeResponse)
+@router.post("", response_model=AnalyzeResponse)
 async def analyze(request: AnalyzeRequest) -> dict:
     """
     Analyze bacterial isolate with epidemiological context.
@@ -591,6 +643,10 @@ async def analyze(request: AnalyzeRequest) -> dict:
         HTTPException: 400 if validation fails, 500 if execution fails
     """
     try:
+        print("\n🚀 [DEBUG] Request received at analyze route")
+        print(f"  isolate_id: {request.isolate_id}")
+        print(f"  patient_profile: {request.patient_profile.dict()}")
+        
         # Initialize LangGraph state
         initial_state: AgentState = {
             "patient_profile": request.patient_profile.dict(),
@@ -602,9 +658,11 @@ async def analyze(request: AnalyzeRequest) -> dict:
         }
         
         logger.info(f"Analyzing isolate: {request.isolate_id}")
+        print("\n⏳ [DEBUG] Invoking sentinel_graph...")
         
         # Invoke compiled LangGraph
         final_state = sentinel_graph.invoke(initial_state)
+        print("\n✅ [DEBUG] sentinel_graph.invoke() completed successfully")
         
         # Construct response
         response = AnalyzeResponse(
