@@ -39,3 +39,4 @@ coverage/
 # Misc
 *.pid
 .DS_Store
+.env
