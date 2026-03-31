@@ -1,156 +1,132 @@
-# 🧬 Sentinel-GNN
+# 🧬 Sentinel-GNN  
+**Autonomous Clinical & Supply Chain ERP via Multi-Agent Orchestration**
 
-### *Explainable Antimicrobial Resistance (AMR) Prediction via Epidemiological Neural-Symbolic Intelligence*
-
-[![Status](https://img.shields.io/badge/status-prototype-pink)](https://github.com/CodeR-6-9/Sentinel_GNN)
-[![Architecture](https://img.shields.io/badge/architecture-Neural--Symbolic-blue)](#)
-
-**Sentinel-GNN** is a medical intelligence platform designed to address the **"black-box" limitation in public health and antimicrobial resistance prediction**.
-
-By shifting from isolated molecular analysis to an **Epidemiological Patient Graph**, Sentinel-GNN combines **Graph Attention Networks (GATs)** with **agentic reasoning (LangGraph)** to produce predictions that are:
-
-* **Accurate** (driven by patient metadata and strain networks)  
-* **Clinically Grounded** (verified against epidemiological guidelines)  
-* **Visually Interpretable** (3D risk-factor explainability)  
+Sentinel-GNN is an end-to-end medical intelligence platform that bridges the dangerous gap between clinical decision support and hospital logistics. By orchestrating a pipeline of 5 specialized AI Agents via LangGraph, Sentinel doesn't just predict Antimicrobial Resistance (AMR)—it autonomously formulates therapies, audits hospital formularies, and executes B2B supply chain restocks to ensure life-saving drugs are always available.
 
 ---
 
 ## 🏗️ System Architecture
 
-Sentinel-GNN follows a **neural-symbolic hybrid architecture**, integrating deep learning on patient populations with structured clinical knowledge.
-
 ```mermaid
 graph TD
-    subgraph "1. Neural Predictive Engine"
-    A[Patient Epidemiological Data] --> B[Clinical Feature Embeddings]
-    B --> C[GAT Model]
-    C --> D[Resistance Prediction]
-    C --> E[Risk Factor Attention Weights]
+
+    subgraph "1. Clinical Intelligence"
+        A[Patient Clinical Profile] --> B[PyTorch MLP Engine]
+        B --> C(1. Predictor Agent)
     end
 
-    subgraph "2. Agentic Reasoning Layer"
-    D --> F[LangGraph Orchestrator]
-    E --> F
-    F --> G{Verifier Agent}
-    G --> H[(Neo4j / Clinical Guidelines)]
-    H --> G
-    G --> I[Strategist Agent]
+    subgraph "2. Multi-Agent Orchestration (LangGraph)"
+        C --> D(2. Verifier Agent)
+        D <-->|Genomic Validation| E[(Neo4j: CARD Database)]
+        D --> F(3. Strategist Agent)
+        F --> G(4. Pharmacist Agent)
+        G <-->|Formulary & DDIs| H[(Internal ERP)]
+        G --> I(5. Procurement Agent)
+        I <-->|Auto-Replenish JSON| J[(B2B Supplier API)]
     end
 
-    subgraph "3. Actionable Interface"
-    I --> J[3D Patient Risk Profile]
-    I --> K[Agent Trace Log]
-    J --> L[Clinical Recommendation]
+    subgraph "3. Physician Interface"
+        F -.-> K((RAG-Powered Copilot))
+        G -.-> K
+        I -.-> K
+        K <-->|Context-Aware Chat| L[Clinical Dashboard]
     end
 
-    style J fill:#f472b6,stroke:#fff,stroke-width:2px
-    style G fill:#38bdf8,stroke:#fff,stroke-width:2px
+    style C fill:#8b5cf6,stroke:#fff,stroke-width:2px,color:#fff
+    style D fill:#3b82f6,stroke:#fff,stroke-width:2px,color:#fff
+    style F fill:#0ea5e9,stroke:#fff,stroke-width:2px,color:#fff
+    style G fill:#10b981,stroke:#fff,stroke-width:2px,color:#fff
+    style I fill:#f59e0b,stroke:#fff,stroke-width:2px,color:#fff
+    style K fill:#ec4899,stroke:#fff,stroke-width:2px,color:#fff
 ```
 
 ---
 
-## 🔄 Execution Flow
+## 🚀 The 5-Agent Pipeline
 
-Instead of a single forward pass, Sentinel-GNN operates as a multi-stage clinical reasoning pipeline:
+Sentinel operates using a strictly defined, self-healing LangGraph pipeline where each agent possesses a specific enterprise role:
 
-```mermaid
-sequenceDiagram
-    participant U as Clinician
-    participant G as GNN Model
-    participant L as LangGraph Orchestrator
-    participant N as Neo4j (Clinical Guidelines)
+- 🧠 **Predictor Agent (PyTorch MLP)**  
+  Ingests patient metadata (Age, Hospitalization History, Comorbidities) and runs a forward pass through a custom Multilayer Perceptron to classify the probability of antibiotic resistance (e.g., Ciprofloxacin resistance).
 
-    U->>G: Input Patient Profile & Isolate ID
-    G->>G: Encode epidemiological patient graph
-    G->>L: Prediction + risk attention weights
+- 🧬 **Verifier Agent (Knowledge Graph)**  
+  Cross-references the MLP’s prediction against a Neo4j graph database of the CARD genomic registry. Grounds predictions in verifiable biological mechanisms (e.g., CpxR efflux pumps), reducing hallucinations.
 
-    Note over L: Verifier Agent
-    L->>N: Query epidemiological risk guidelines
-    N-->>L: Clinical protocol validation
+- ⚕️ **Strategist Agent (Clinical Logic)**  
+  Synthesizes verified predictions with patient constraints (e.g., allergies, renal impairment) to recommend safe, risk-adjusted therapies.
 
-    Note over L: Strategist Agent
-    L->>L: Synthesize patient-specific treatment
+- 💊 **Pharmacist Agent (Safety & Cost)**  
+  Audits recommendations against the hospital formulary. Flags Drug-Drug Interactions (DDIs), checks approval requirements, and calculates costs.
 
-    L-->>U: 3D risk visualization + clinical strategy
-```
+- 📦 **Procurement Agent (Autonomous ERP)**  
+  Monitors inventory levels and triggers automated B2B purchase orders via API when stock falls below thresholds.
 
 ---
 
-## 🚀 Key Innovations
+## 💬 Context-Aware AI Copilot (RAG Pipeline)
 
-### 1. Epidemiological Verification Layer (Graph-RAG)
-Most AMR models evaluate bacteria in a vacuum, ignoring the host.
+Sentinel includes a Retrieval-Augmented Generation (RAG) Copilot embedded in the clinical dashboard.
 
-The Verifier Agent uses Graph Retrieval-Augmented Generation (Graph-RAG) to validate the GAT's highlighted patient risk factors (e.g., Diabetes, Previous Hospitalization) against established clinical protocols (CDC/WHO).
+It automatically ingests:
+- Patient profile (age, allergies, vitals)
+- Predicted resistance risk
+- Recommended therapy
+- Real-time pharmacy inventory
 
-- Confirms known epidemiological resistance trends  
-- Flags inconsistencies between model output and clinical evidence  
-- Surfaces high-risk patient demographics for specific outbreaks  
+Physicians can:
+- Validate recommendations
+- Adjust dosages dynamically
+- Explore alternative treatments
 
----
-
-### 2. 3D Explainability via Patient Risk Attention
-We project GAT attention weights onto a 3D patient-centric interaction space using Three.js.
-
-- High-impact patient risk factors (Age, Gender, Comorbidities) are visually highlighted in pulsing pink  
-- Enables intuitive inspection of why the AI predicted resistance  
-- Bridges mathematical model interpretability with rapid clinician usability  
-
----
-
-### 3. Context-Aware Clinical Strategy Engine
-The Strategist Agent treats the patient, not just the bug.
-
-- Evaluates the confidence of the GNN alongside verified clinical constraints  
-- Suggests alternative therapy strategies tailored to the patient's specific risk profile (e.g., avoiding nephrotoxic drugs in elderly diabetic patients)  
-- Promotes effective antimicrobial stewardship  
+All responses are grounded in the patient’s real-time digital context.
 
 ---
 
 ## 🛠️ Tech Stack
 
-### Core Intelligence
-- PyTorch Geometric (Graph Attention Networks)  
-- LangGraph (Agentic orchestration)  
-- Scikit-Learn (Feature engineering pipeline)  
-
-### Knowledge Layer
-- Neo4j (Graph database)  
-- Public Health & Clinical Guidelines (CDC/WHO structural logic)  
-
-### Backend
-- FastAPI  
-- Pydantic  
-- Python 3.10+  
-
-### Frontend
-- Next.js 14  
-- React Three Fiber (Three.js)  
-- Tailwind CSS  
+| Layer             | Technologies Used                              |
+|-------------------|------------------------------------------------|
+| Predictive ML     | PyTorch (MLP), Pandas, Scikit-Learn (SMOTE)    |
+| Agentic AI        | LangGraph, LangChain, OpenAI / Groq APIs       |
+| Knowledge Base    | Neo4j (Graph DB), RAG Vector Embeddings        |
+| Backend & API     | FastAPI, Pydantic, Python 3.10+                |
+| Frontend          | Next.js 14, React, Tailwind CSS, Lucide Icons  |
 
 ---
 
 ## 💾 Installation & Setup
 
-### Backend
+### 1. Backend Initialization
+
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Activate environment
+source venv/bin/activate   # Windows: venv\Scripts\activate
+
+# Install dependencies and run server
 pip install -r requirements.txt
-uvicorn app.api.server:app --reload
+uvicorn main:app --reload
 ```
 
-### Frontend
+---
+
+### 2. Frontend Initialization
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
+App runs at: **http://localhost:3000**
+
 ---
 
-## 🤝 Team
+## 🤝 The Team
 
-**Hridesh & Apoorva — The Found Tokens**  
-Developed for *AI Hackathon Spirit26, IIT BHU*
+Built with 💻 and ☕ by **The Found Tokens**  
+**Hridesh • Apoorva**  
+
+Developed for the **AI Hackathon Spirit26 at IIT BHU**
