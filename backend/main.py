@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -42,7 +43,6 @@ class AnalysisRequest(BaseModel):
     isolate_id: str
     patient_profile: PatientProfile
 
-# 🎯 UPGRADED STATE: Now includes Logistics memory
 class AgentState(TypedDict):
     isolate_id: str
     patient_profile: Dict[str, Any]
@@ -83,7 +83,7 @@ sentinel_agent = workflow.compile()
 
 # --- 4. FASTAPI ENDPOINTS ---
 
-# 🎯 NEW: The Pharmacy Inventory Route for the Global Dashboard
+# The Pharmacy Inventory Route for the Global Dashboard
 @app.get("/api/inventory")
 async def get_inventory():
     """Fetches the live pharmacy inventory for the frontend dashboard."""
@@ -98,13 +98,12 @@ async def get_inventory():
         return {"error": f"Could not load inventory: {str(e)}"}
 
 
-# 🎯 EXISTING: The Main Analysis Route for the Doctor's Dashboard
+# The Main Analysis Route for the Doctor's Dashboard
 @app.post("/api/analyze")
 async def analyze_patient(data: AnalysisRequest):
     """
     Main Entry Point: Orchestrates the LangGraph agent execution.
     """
-    # Initialize the state with incoming request data
     initial_state: AgentState = {
         "isolate_id": data.isolate_id,
         "patient_profile": data.patient_profile.dict(),
@@ -117,10 +116,8 @@ async def analyze_patient(data: AnalysisRequest):
         "procurement_order": {}              
     }
     
-    # Run the full agent pipeline (Predictor -> Verifier -> Strategist -> Pharmacist -> Procurement)
     final_state = sentinel_agent.invoke(initial_state)
     
-    # Return the unified payload expected by the Next.js Frontend
     return {
         "isolate_id": final_state["isolate_id"],
         "patient_profile": final_state["patient_profile"],
@@ -131,6 +128,49 @@ async def analyze_patient(data: AnalysisRequest):
         "pharmacist_review": final_state.get("pharmacist_review", {}), 
         "procurement_order": final_state.get("procurement_order", {})  
     }
+
+
+# ==========================================================
+# AI Chatbot Consultation Route
+# ==========================================================
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatContext(BaseModel):
+    patient_profile: Optional[Dict[str, Any]] = None
+    strategy: Optional[str] = None
+    drug: Optional[str] = None
+
+class ChatRequest(BaseModel):
+    message: str
+    history: List[ChatMessage] = []
+    context: Optional[ChatContext] = None
+
+@app.post("/api/chat")
+async def chat_with_specialist(request: ChatRequest):
+    user_msg = request.message.lower()
+    await asyncio.sleep(1.5) # Simulate AI typing
+    
+    # -------------------------------------------------------------
+    #  CONTEXT AWARENESS LOGIC
+    # -------------------------------------------------------------
+    patient = request.context.patient_profile if request.context and request.context.patient_profile else {}
+    selected_drug = request.context.drug if request.context and request.context.drug else "the selected drug"
+    age = patient.get("Age", "unknown")
+    allergy = "a Penicillin allergy" if str(patient.get("Penicillin_Allergy", "")).lower() == "true" else "no known allergies"
+    
+    # ==========================================================
+    #  MOCK AI RESPONSES (Reads the Patient Context!)
+    # ==========================================================
+    if "history" in user_msg or "prior" in user_msg or "constraint" in user_msg:
+        reply = f"Noted. I see this patient is {age} years old with {allergy}. If there is additional cardiac history (like prolonged QT intervals), we should avoid Fluoroquinolones entirely. Should I recalculate the primary therapy to prioritize a Carbapenem instead of {selected_drug}?"
+    elif "alternative" in user_msg or "kidney" in user_msg or "renal" in user_msg:
+        reply = f"Given the patient's profile (Age {age}), if their renal function drops, {selected_drug} will require strict dose adjustment. A safer alternative for severe renal impairment without compromising efficacy against this resistant strain would be Aztreonam. Shall I check pharmacy stock for Aztreonam?"
+    else:
+        reply = f"I've analyzed the strategy recommending {selected_drug} for this {age}-year-old patient. Based on the {allergy} and the infection history, this is currently the safest empiric choice. What specific adjustments or constraints would you like to add?"
+
+    return {"reply": reply}
 
 if __name__ == "__main__":
     import uvicorn

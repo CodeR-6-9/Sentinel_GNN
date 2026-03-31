@@ -2,12 +2,14 @@
 
 import React from "react";
 import { AlertCircle, Zap, Pill, ShoppingCart, ShieldAlert, PackageCheck, Truck } from "lucide-react";
+import CopilotChat from "./CopilotChat";
 
 interface RecommendationStageProps {
   strategy: string;
   isLoading: boolean;
   pharmacist?: any;
   procurement?: any;
+  patientProfile?: any;
 }
 
 export default function RecommendationStage({
@@ -15,11 +17,11 @@ export default function RecommendationStage({
   isLoading,
   pharmacist,
   procurement,
+  patientProfile,
 }: RecommendationStageProps) {
   return (
     <div className="flex-1 bg-slate-50 dark:bg-slate-950 border-l border-r border-slate-200 dark:border-slate-800 flex flex-col items-center justify-start p-8 overflow-y-auto custom-scrollbar">
       
-      {/* --- LOADING STATE --- */}
       {isLoading && (
         <div className="w-full h-full flex flex-col items-center justify-center">
           <div className="w-full max-w-md space-y-6 animate-pulse">
@@ -40,7 +42,6 @@ export default function RecommendationStage({
         </div>
       )}
 
-      {/* --- EMPTY STATE --- */}
       {!isLoading && !strategy && (
         <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
           <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto border border-slate-300 dark:border-slate-700">
@@ -57,11 +58,9 @@ export default function RecommendationStage({
         </div>
       )}
 
-      {/* --- POPULATED STATE --- */}
       {!isLoading && strategy && (
         <div className="w-full max-w-3xl space-y-6 pb-10 mt-4">
           
-          {/* 1. CLINICAL RECOMMENDATION CARD */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-emerald-400 dark:border-emerald-500/50 border-l-4 dark:border-l-emerald-400 shadow-lg overflow-hidden backdrop-blur">
             <div className="bg-emerald-50 dark:bg-emerald-900/20 px-6 py-4 border-b border-emerald-200 dark:border-emerald-500/30 flex items-center gap-3">
               <Zap className="w-6 h-6 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
@@ -81,11 +80,9 @@ export default function RecommendationStage({
             </div>
           </div>
 
-          {/* 2. LOGISTICS & PHARMACY GRID */}
           {(pharmacist?.status || procurement?.status) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               
-              {/* PHARMACIST AGENT CARD */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-md">
                 <div className="bg-indigo-50 dark:bg-indigo-900/10 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
                   <Pill className="w-4 h-4 text-indigo-500" />
@@ -107,7 +104,6 @@ export default function RecommendationStage({
                     </span>
                   </div>
                   
-                  {/* DDI Warnings */}
                   {pharmacist?.warnings?.length > 0 && (
                     <div className="mt-4 p-3 bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-900/50 rounded-lg">
                       <div className="flex items-center gap-2 mb-2">
@@ -126,7 +122,6 @@ export default function RecommendationStage({
                 </div>
               </div>
 
-              {/* PROCUREMENT AGENT CARD */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-md flex flex-col">
                 <div className="bg-blue-50 dark:bg-blue-900/10 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
                   <ShoppingCart className="w-4 h-4 text-blue-500" />
@@ -165,6 +160,12 @@ export default function RecommendationStage({
 
             </div>
           )}
+
+          <CopilotChat 
+            patientProfile={patientProfile} 
+            strategy={strategy} 
+            selectedDrug={procurement?.drug || pharmacist?.drug || ""} 
+          />
           
           <div className="text-center text-xs text-slate-400 mt-8">
             System processed via Multi-Agent LLM Orchestration
