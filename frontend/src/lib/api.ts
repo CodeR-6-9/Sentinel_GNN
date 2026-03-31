@@ -4,11 +4,10 @@ const API_BASE_URL = "http://127.0.0.1:8000";
 
 export interface PatientProfile {
   Age: number;
-  Gender: string;
-  Diabetes: boolean;
   Hospital_before: boolean;
-  Hypertension: boolean;
   Infection_Freq: number;
+  Penicillin_Allergy?: boolean; // New safety override
+  Renal_Impaired?: boolean;     // New safety override
 }
 
 export interface AnalyzeResponse {

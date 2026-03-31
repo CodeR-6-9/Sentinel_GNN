@@ -1,7 +1,7 @@
 """
 Predictor Agent Node
 
-ML inference on patient epidemiological profile using SentinelMLP.
+ML inference on patient epidemiological profile using SentinelMLP (4-Feature Pivot).
 """
 
 import logging
@@ -10,57 +10,41 @@ from app.ml.gnn import run_gnn_inference
 
 logger = logging.getLogger(__name__)
 
-
 # ============================================================================
-# NODE 1: ML PREDICTOR AGENT
+# NODE 1: ML PREDICTOR AGENT (4-FEATURE PIVOT)
 # ============================================================================
 
 def predictor_node(state: AgentState) -> AgentState:
     """
     Node 1: ML Predictor Agent - SentinelMLP
     
-    Calls production PyTorch MLP inference with patient epidemiological profile.
+    Calls production PyTorch MLP inference with the 4-feature patient profile.
+    Features: [isolate_id (String), Age, Hospital_before, Infection_Freq]
     """
     try:
         print("\n📊 [DEBUG] Predictor Node: Starting ML inference...")
         patient_profile = state["patient_profile"]
-        isolate_id = state["isolate_id"]
-        print(f"  Isolate: {isolate_id}")
+        isolate_id = state.get("isolate_id", "Unknown")
+        print(f"  Isolate (Strain): {isolate_id}")
         
-        # Extract patient features from PatientProfile
+        # Extract the 3 Clinical Features
         age = float(patient_profile.get("Age", 50))
-        gender_raw = patient_profile.get("Gender", "M")
-        diabetes = float(patient_profile.get("Diabetes", False))
         hospital_before = float(patient_profile.get("Hospital_before", False))
-        hypertension = float(patient_profile.get("Hypertension", False))
         infection_freq = float(patient_profile.get("Infection_Freq", 0))
         
-        # 🔥 CRITICAL FIX: Map Gender exactly as the training script did (M=1.0, F=0.0)
-        gender_mapping = {
-            "M": 1.0, "Male": 1.0, "m": 1.0,
-            "F": 0.0, "Female": 0.0, "f": 0.0,
-            "O": 0.0, "Other": 0.0
-        }
-        gender_encoded = gender_mapping.get(gender_raw, 0.0)  # Default to 0.0
+        # 🎯 FIX: Pass the raw string to GNN.py. Let GNN.py handle the translation!
+        features = [isolate_id, age, hospital_before, infection_freq]
         
-        # Prepare 6-feature list for production model
-        features = [age, gender_encoded, diabetes, hospital_before, hypertension, infection_freq]
-        
-        # Call production SentinelMLP inference
         logger.info(f"Invoking SentinelMLP for {isolate_id}")
-        print(f"  Features (6-element): [Age={age}, Gender={gender_encoded}, Diabetes={diabetes}, Hospital_before={hospital_before}, Hypertension={hypertension}, Infection_Freq={infection_freq}]")
+        print(f"  Features (4-element): [Strain='{isolate_id}', Age={age}, Hospital_before={hospital_before}, Infection_Freq={infection_freq}]")
         print(f"  → Calling run_gnn_inference()...")
         
+        # Run Inference
         result = run_gnn_inference(features)
         
-        # 🛡️ THE BULLETPROOF EXTRACTION: Use .get() with safe defaults
-        prediction_code = result.get("prediction", 0)  # 1 (Resistant) or 0 (Susceptible)
-        
-        # Handle if confidence comes as 85.0 (percentage) or 0.85 (decimal)
-        raw_conf = result.get("confidence", 0.0)
-        probability = result.get("probability", raw_conf / 100 if raw_conf > 1 else raw_conf)
-        
-        # MLP doesn't have driving factors yet, default to empty list
+        # Extract results safely
+        prediction_code = result.get("prediction", 0)  
+        probability = result.get("probability", 0.0)
         driving_factors = result.get("driving_factors", [])
         
         print(f"  ← Result: prediction={prediction_code}, confidence={probability:.2%}")
@@ -68,7 +52,7 @@ def predictor_node(state: AgentState) -> AgentState:
         # Convert prediction code to string
         prediction_str = "Resistant" if prediction_code == 1 else "Susceptible"
         
-        # Populate ML prediction results
+        # Populate ML prediction state
         state["ml_prediction"] = {
             "is_resistant": prediction_code == 1,
             "prediction": prediction_str,
@@ -77,7 +61,7 @@ def predictor_node(state: AgentState) -> AgentState:
         }
         
         # Business Logic: Moderate confidence warning
-        if prediction_code == 1 and 0.77 <= probability <= 0.85:
+        if prediction_code == 1 and 0.45 <= probability <= 0.65:
             warning_msg = (
                 f"Model detected resistance patterns with moderate confidence "
                 f"({probability:.2%}); clinical correlation advised."

@@ -1,75 +1,105 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, TypedDict
+from typing import List, Optional, Dict, Any
+from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, END
 
-# Import our Engines
-from app.ml.gnn import run_gnn_inference
-from app.db.neo4j_client import verify_resistance_mechanisms
+# --- 1. IMPORT PRODUCTION NODES ---
+from app.agents.nodes.predictor import predictor_node
+from app.agents.nodes.strategist import strategist_node
+from app.agents.nodes.verifier import verifier_node 
 
 app = FastAPI(title="Sentinel-GNN Agent API")
 
-# --- 1. DATA MODELS ---
-class PatientData(BaseModel):
-    features: List[float]  # [Age, Gender, Diabetes, Hospital_before, Hypertension, Infection_Freq]
+# --- 🛡️ CORS MIDDLEWARE ---
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- 2. DATA MODELS (Aligned with Frontend) ---
+class PatientProfile(BaseModel):
+    Age: int
+    Hospital_before: bool
+    Infection_Freq: int
+    Penicillin_Allergy: Optional[bool] = False
+    Renal_Impaired: Optional[bool] = False
+
+class AnalysisRequest(BaseModel):
+    isolate_id: str
+    patient_profile: PatientProfile
+
+# This is the shared "brain" that passes data between nodes
 class AgentState(TypedDict):
-    features: List[float]
-    gnn_prediction: int
-    gnn_probability: float
-    driving_factors: List[str]
-    card_verification: str
-    final_report: dict
+    isolate_id: str
+    patient_profile: Dict[str, Any]
+    ml_prediction: Dict[str, Any]
+    kg_verification: Dict[str, Any]
+    strategy: str
+    trace: List[str]
 
-# --- 2. LANGGRAPH NODES ---
-def predict_node(state: AgentState):
-    """Runs the PyTorch GAT model"""
-    result = run_gnn_inference(state["features"])
-    return {
-        "gnn_prediction": result["prediction"],
-        "gnn_probability": result["probability"],
-        "driving_factors": result["driving_factors"]
-    }
-
-def verify_node(state: AgentState):
-    """Cross-references prediction with Neo4j CARD database"""
-    if state["gnn_prediction"] == 1:
-        # If resistant, check CARD for Ciprofloxacin (fluoroquinolone) mechanisms
-        verification = verify_resistance_mechanisms("fluoroquinolone antibiotic")
-    else:
-        verification = "Patient predicted susceptible. Standard antibiotic protocols apply."
-    return {"card_verification": verification}
-
-def strategist_node(state: AgentState):
-    """Formats the final payload for the 3D Next.js UI"""
-    report = {
-        "status": "Resistant 🚨" if state["gnn_prediction"] == 1 else "Susceptible ✅",
-        "confidence": f"{state['gnn_probability'] * 100:.1f}%",
-        "highlight_nodes": state["driving_factors"],  # Tells Three.js which nodes to glow pink!
-        "clinical_context": state["card_verification"]
-    }
-    return {"final_report": report}
-
-# --- 3. BUILD THE GRAPH ---
+# --- 3. BUILD THE MULTI-AGENT GRAPH ---
 workflow = StateGraph(AgentState)
-workflow.add_node("Predictor", predict_node)
-workflow.add_node("Verifier", verify_node)
+
+# Add our production nodes
+workflow.add_node("Predictor", predictor_node)
+workflow.add_node("Verifier", verifier_node)
 workflow.add_node("Strategist", strategist_node)
 
+# --- ⛓️ DEFINE THE SEQUENTIAL FLOW ---
 workflow.set_entry_point("Predictor")
+
+# Step 1: Predictor (ML) -> Verifier (Genomic DB)
 workflow.add_edge("Predictor", "Verifier")
-workflow.add_edge("Verifier", "Strategist")
+
+# Step 2: Verifier (Genomic DB) -> Strategist (Clinical Logic)
+workflow.add_edge("Verifier", "Strategist") 
+
+# Step 3: Strategist -> Finalize
 workflow.add_edge("Strategist", END)
 
+# Compile the final agent
 sentinel_agent = workflow.compile()
 
 # --- 4. FASTAPI ENDPOINT ---
-@app.post("/analyze")
-def analyze_patient(data: PatientData):
-    """The endpoint the Next.js UI will call"""
-    initial_state = {"features": data.features}
+@app.post("/api/analyze")
+async def analyze_patient(data: AnalysisRequest):
+    """
+    Main Entry Point: Orchestrates the LangGraph agent execution.
+    """
+    # Initialize the state with incoming request data
+    initial_state: AgentState = {
+        "isolate_id": data.isolate_id,
+        "patient_profile": data.patient_profile.dict(),
+        "ml_prediction": {},
+        "kg_verification": {"validated": False, "genes": [], "details": []}, 
+        "strategy": "",
+        "trace": []
+    }
     
-    # Run the LangGraph agent!
-    result = sentinel_agent.invoke(initial_state)
+    # Run the full agent pipeline (Predictor -> Verifier -> Strategist)
+    final_state = sentinel_agent.invoke(initial_state)
     
-    return result["final_report"]
+    # Return the unified payload expected by the Next.js Frontend
+    return {
+        "isolate_id": final_state["isolate_id"],
+        "patient_profile": final_state["patient_profile"],
+        "ml_prediction": final_state["ml_prediction"],
+        "kg_verification": final_state["kg_verification"],
+        "strategy": final_state["strategy"],
+        "trace": final_state["trace"]
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    # Start the server on port 8000
+    uvicorn.run(app, host="0.0.0.0", port=8000)

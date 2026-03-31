@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 
 # =====================================================================
-# 1. THE MODEL ARCHITECTURE (Must exactly match the training script)
+# 1. THE MODEL ARCHITECTURE
 # =====================================================================
 class ResBlock(nn.Module):
     def __init__(self, dim, dropout=0.25):
@@ -30,7 +30,6 @@ class SentinelMLP(nn.Module):
         )
         
     def forward(self, x): 
-        # The model internally calculates the interaction features now!
         age_freq = x[:, 1] * x[:, 3]
         hosp_freq = x[:, 2] * x[:, 3]
         age_hosp = x[:, 1] * x[:, 2]
@@ -46,14 +45,10 @@ class SentinelMLP(nn.Module):
 # =====================================================================
 # 2. GLOBAL TRAINING STATISTICS & THRESHOLD
 # =====================================================================
-# ⚠️ IMPORTANT: Update these values to match the exact output 
-# from your final terminal execution of train.py!
 AGE_MEAN = 45.6321
 AGE_STD = 24.8873
 FREQ_MEAN = 1.5143
 FREQ_STD = 1.0219
-
-# The dynamic threshold found by the training script (e.g., 0.68)
 THRESHOLD = 0.68 
 
 # =====================================================================
@@ -62,16 +57,16 @@ THRESHOLD = 0.68
 def preprocess_features(features: list, encoder_classes: np.ndarray) -> np.ndarray:
     """
     Transforms the 4 API features into the normalized array the model expects.
-    Expected input: [Souches (str), Age (float), Hospital_before (bool/int), Infection_Freq (float)]
+    Expected input: [isolate_id (str), Age (float), Hospital_before (bool/int), Infection_Freq (float)]
     """
-    # 1. Clean and Encode the Bacteria Strain (Souches)
+    # 1. Clean and Encode the Bacteria Strain
     souche_str = str(features[0]).lower().strip()
-    souche_str = re.sub(r'^s\d+\s+', '', souche_str).strip() # Remove "s123 " prefix if present
+    souche_str = re.sub(r'^s\d+\s+', '', souche_str).strip() 
     
+    # Check if the strain exists in our training data
     if souche_str in encoder_classes:
         souche_encoded = np.where(encoder_classes == souche_str)[0][0]
     else:
-        # Fallback to the most common class or 0 if it's a completely unseen bacteria
         print(f"⚠️ Warning: Unseen bacteria strain '{souche_str}'. Defaulting to encoded ID 0.")
         souche_encoded = 0 
         
@@ -80,11 +75,10 @@ def preprocess_features(features: list, encoder_classes: np.ndarray) -> np.ndarr
     hosp = 1.0 if features[2] in [1, '1', True, 'Yes', 'yes'] else 0.0
     freq = float(features[3])
 
-    # 3. Normalize numerical features using training statistics
+    # 3. Normalize numerical features
     age_n = (age - AGE_MEAN) / (AGE_STD + 1e-8)
     freq_n = (freq - FREQ_MEAN) / (FREQ_STD + 1e-8)
 
-    # Return the clean 4-element array (Model handles the interaction math internally)
     return np.array([souche_encoded, age_n, hosp, freq_n], dtype=np.float32)
 
 # =====================================================================
@@ -93,38 +87,38 @@ def preprocess_features(features: list, encoder_classes: np.ndarray) -> np.ndarr
 def run_gnn_inference(features: list) -> dict:
     """Runs the 4 features through the optimized SentinelMLP model."""
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(script_dir, "sentinel_gnn_best.pth")
-        encoder_path = os.path.join(script_dir, "strain_encoder_classes.npy")
+        # 🎯 FIX: Correctly point to the backend/app/models/ directory
+        backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+        models_dir = os.path.join(backend_root, "app", "models")
         
-        # Load the translation dictionary for bacteria names
+        model_path = os.path.join(models_dir, "sentinel_gnn_best.pth")
+        encoder_path = os.path.join(models_dir, "strain_encoder_classes.npy")
+        
+        # Load the translation dictionary
         encoder_classes = np.load(encoder_path, allow_pickle=True)
         
-        # Preprocess features
+        # Preprocess features (This handles the strain text -> number translation)
         X_clean = preprocess_features(features, encoder_classes)
         
         # Initialize and Load Model
         model = SentinelMLP(in_dim=4)
         model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
-        
-        # CRITICAL: Set to eval mode to freeze BatchNorm layers
         model.eval()
         
         with torch.no_grad():
             input_tensor = torch.from_numpy(X_clean).float().unsqueeze(0)
-            
             logits = model(input_tensor)
             probability = torch.sigmoid(logits).item()
-            
-            # Use the optimized THRESHOLD instead of 0.5
             is_resistant = bool(probability >= THRESHOLD)
             
         return {
             "prediction": 1 if is_resistant else 0,
             "is_resistant": is_resistant,
-            "confidence": round(probability * 100, 2)
+            "probability": probability,
+            "confidence": round(probability * 100, 2),
+            "driving_factors": []
         }
         
     except Exception as e:
         print(f"❌ ML Inference Error: {e}")
-        return {"prediction": 0, "is_resistant": False, "confidence": 0.0}
+        return {"prediction": 0, "is_resistant": False, "probability": 0.0, "confidence": 0.0, "driving_factors": []}

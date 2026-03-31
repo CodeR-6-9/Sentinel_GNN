@@ -1,166 +1,103 @@
 """
-Strategist Agent Node
-
-Recommends alternative antibiotics based on local epidemiological data.
+Strategist Agent Node (Dynamic Risk-Adjusted Logic)
 """
-
 import os
 import logging
 import pandas as pd
 from app.schemas.analysis_types import AgentState
 
 logger = logging.getLogger(__name__)
-
-# Resolve the absolute path to the backend root directory (3 levels up from this file in nodes/)
 backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 
-
-# ============================================================================
-# NODE 3: STRATEGIST AGENT (PANDAS / LOCAL DATASET)
-# ============================================================================
-
 def strategist_node(state: AgentState) -> AgentState:
-    """
-    Node 3: Strategist Agent
-    
-    Recommends alternative antibiotics based on local epidemiological data.
-    Strategy:
-    - Load local CSV: 'data/location_stats.csv'
-    - If ML predicted Resistant to CIP:
-      * Find antibiotic with lowest mean resistance across dataset
-      * Recommend as safer alternative
-    
-    CSV Expected Format:
-    Location, IMIPENEM, CEFTAZIDIME, GENTAMICIN, AUGMENTIN, CIPROFLOXACIN
-    
-    Args:
-        state: Current AgentState with ml_prediction and kg_verification
-    
-    Returns:
-        Updated AgentState with strategy populated and trace appended
-    """
     try:
-        print("\n💊 [DEBUG] Strategist Node: Analyzing local epidemiological data...")
-        prediction = state["ml_prediction"].get("prediction", "Unknown")
-        print(f"  ML Prediction: {prediction}")
+        print("\n💊 [DEBUG] Strategist Node: Formulating Patient-Adjusted Strategy...")
         
-        # If not resistant, provide conservative recommendation
-        if prediction != "Resistant":
-            state["strategy"] = (
-                "Clinical Recommendation: Continue with current antibiotic regimen. "
-                "Organism appears susceptible based on epidemiological modeling."
-            )
-            state["trace"].append(
-                "✓ Strategist: Conservative recommendation (non-resistant prediction)"
-            )
-            return state
+        is_resistant = state["ml_prediction"].get("is_resistant", False)
+        confidence = state["ml_prediction"].get("confidence", 0.0)
+        patient_profile = state.get("patient_profile", {})
         
-        # Load local dataset using absolute backend_root path
         csv_path = os.path.join(backend_root, "data", "location_stats.csv")
-        print(f"  CSV Path: {csv_path}")
-        
         if not os.path.exists(csv_path):
-            logger.warning(f"CSV not found at {csv_path}")
-            print(f"  ❌ CSV file not found")
-            state["strategy"] = (
-                "Clinical Recommendation: Refer to institutional antibiograms. "
-                "Local dataset unavailable."
-            )
-            state["trace"].append(
-                f"⚠ Strategist: Local dataset not found at {csv_path}"
-            )
+            state["strategy"] = "⚠️ ERROR: Local institutional antibiogram offline."
             return state
-        
-        print(f"  ✅ CSV file loaded successfully")
-        
-        # Load and analyze resistance data
-        print(f"  → Reading CSV file...")
+            
         df = pd.read_csv(csv_path)
-        logger.info(f"Loaded dataset with {len(df)} records from {csv_path}")
-        print(f"  ✅ Dataset loaded: {len(df)} location records")
+        drug_columns = [col for col in df.columns if col.upper() not in ["LOCATION", "CIPROFLOXACIN"]]
         
-        # Define antibiotic columns (exclude Location and CIPROFLOXACIN)
-        drug_columns = [
-            col for col in df.columns
-            if col not in ["Location", "CIPROFLOXACIN"]
-        ]
-        print(f"  Available alternatives: {drug_columns}")
+        # Safety Constraints
+        penicillin_allergy = str(patient_profile.get("Penicillin_Allergy", "False")).lower() == "true"
+        renal_impaired = str(patient_profile.get("Renal_Impaired", "False")).lower() == "true"
         
-        if not drug_columns:
-            state["strategy"] = (
-                "Clinical Recommendation: Unable to parse antibiotic dataset. "
-                "Refer to CARD database and clinical guidelines."
-            )
-            state["trace"].append("⚠ Strategist: No drug columns found in dataset")
-            return state
+        safe_drugs = []
+        contraindicated = []
         
-        # Calculate mean resistance for each drug (lower is better)
-        drug_resistance_means = {}
         for drug in drug_columns:
-            try:
-                mean_resistance_raw = pd.to_numeric(df[drug], errors="coerce").mean()
-                
-                # Check if values are decimals (0-1) or already percentages (1-100)
-                # Decimals need multiplication by 100; percentages don't
-                if mean_resistance_raw < 1.0:
-                    # Values are decimals (e.g., 0.22) - multiply by 100
-                    mean_resistance_pct = mean_resistance_raw * 100
-                else:
-                    # Values are already percentages (e.g., 22.0) - use as is
-                    mean_resistance_pct = mean_resistance_raw
-                
-                # Cap at 100.0 and format
-                mean_resistance_pct = min(100.0, mean_resistance_pct)
-                drug_resistance_means[drug] = mean_resistance_pct
-            except Exception as e:
-                logger.warning(f"Error processing {drug}: {e}")
+            drug_upper = drug.upper()
+            if drug_upper == "AUGMENTIN" and penicillin_allergy:
+                contraindicated.append(f"• {drug_upper} (Contraindicated: Penicillin Allergy)")
                 continue
+            if drug_upper == "GENTAMICIN" and renal_impaired:
+                contraindicated.append(f"• {drug_upper} (Contraindicated: Nephrotoxicity Risk)")
+                continue
+            safe_drugs.append(drug)
+            
+        # DYNAMIC CLINICAL RISK ADJUSTMENT
+        # Extract patient specific parameters
+        infection_freq = int(patient_profile.get("Infection_Freq", 0))
+        age = int(patient_profile.get("Age", 50))
         
-        # Find safest alternative (lowest resistance)
-        if drug_resistance_means:
-            print(f"  → Analyzing resistance rates across {len(drug_resistance_means)} alternatives:")
-            for drug, rate in sorted(drug_resistance_means.items(), key=lambda x: x[1]):
-                print(f"     • {drug}: {rate:.1f}%")
+        # Calculate Risk Multiplier (More prior infections = higher chance of multidrug resistance)
+        risk_multiplier = 1.0 + (infection_freq * 0.12)  # 12% extra risk per prior infection
+        if age > 65:
+            risk_multiplier += 0.08  # Elderly baseline risk bump
             
-            safest_drug = min(
-                drug_resistance_means.items(),
-                key=lambda x: x[1]
-            )
-            drug_name, resistance_pct = safest_drug
-            
-            # Format percentage to 1 decimal place (e.g., "22.6%")
-            resistance_str = f"{resistance_pct:.1f}%"
-            
-            print(f"  ✅ Recommendation: {drug_name} ({resistance_str} local resistance)")
-            
-            state["strategy"] = (
-                f"Clinical Recommendation: CIPROFLOXACIN resistance detected. "
-                f"Switch to {drug_name} (local resistance rate: {resistance_str}). "
-                f"Verify susceptibility via AST before administration."
-            )
-            
-            state["trace"].append(
-                f"✓ Strategist: Recommended alternative: {drug_name} "
-                f"(local resistance: {resistance_str})"
-            )
-            print(f"  ✅ Recommended: {drug_name} ({resistance_str})")
+        drug_stats = []
+        for drug in safe_drugs:
+            try:
+                # 1. Get the base hospital average
+                base_res = pd.to_numeric(df[drug], errors="coerce").mean()
+                base_pct = base_res * 100 if base_res <= 1.0 else base_res
+                
+                # 2. Apply the Patient-Specific Risk Multiplier
+                adjusted_pct = base_pct * risk_multiplier
+                
+                # Cap at 99.9% logically
+                adjusted_pct = min(99.9, adjusted_pct)
+                
+                drug_stats.append({"name": drug.upper(), "rate": adjusted_pct})
+            except:
+                continue
+                
+        # Sort by safest (lowest adjusted resistance rate)
+        drug_stats.sort(key=lambda x: x["rate"])
+        
+        # BUILD STRATEGY
+        strategy_lines = []
+        
+        if not is_resistant:
+            strategy_lines.append("🟢 CLINICAL STRATEGY: STANDARD THERAPY")
+            strategy_lines.append("Organism likely susceptible. Continue standard CIPROFLOXACIN.")
         else:
-            state["strategy"] = (
-                "Clinical Recommendation: Resistance detected. "
-                "Refer to institutional antibiogram and/or infectious disease specialist."
-            )
-            state["trace"].append("⚠ Strategist: Unable to calculate drug resistance means")
-            print(f"  ⚠️ Unable to calculate resistance means")
-        
-        print(f"✅ [DEBUG] Strategist Node: Complete")
+            strategy_lines.append("🚨 CLINICAL STRATEGY: ESCALATION REQUIRED")
+            strategy_lines.append(f"Ciprofloxacin resistance risk: {confidence:.1f}%.")
+            
+            if len(drug_stats) > 0:
+                strategy_lines.append("\n✅ PRIMARY EMPIRIC THERAPY (Patient-Adjusted):")
+                strategy_lines.append(f"• {drug_stats[0]['name']} ({drug_stats[0]['rate']:.1f}% adjusted risk)")
+            
+            if len(drug_stats) > 1:
+                strategy_lines.append("\n⚠️ SECONDARY OPTION:")
+                strategy_lines.append(f"• {drug_stats[1]['name']} ({drug_stats[1]['rate']:.1f}% adjusted risk)")
+                
+        if contraindicated:
+            strategy_lines.append("\n🚫 CONTRAINDICATED (DO NOT PRESCRIBE):")
+            strategy_lines.extend(contraindicated)
+            
+        state["strategy"] = "\n".join(strategy_lines)
         return state
-    
+
     except Exception as e:
-        error_msg = f"Strategist Node Error: {str(e)}"
-        logger.error(error_msg)
-        state["trace"].append(f"✗ {error_msg}")
-        state["strategy"] = (
-            f"Clinical Recommendation: Processing error ({str(e)}). "
-            f"Refer to institutional guidelines and specialist consultation."
-        )
+        logger.error(f"Strategist Error: {str(e)}")
+        state["strategy"] = "⚠️ CLINICAL STRATEGY ERROR."
         return state
