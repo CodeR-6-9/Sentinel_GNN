@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { analyzeIsolate, AnalyzeResponse, PatientProfile } from "@/lib/api";
 import PatientIntakeSidebar from "@/components/dashboard/PatientIntakeSidebar";
 import RecommendationStage from "@/components/dashboard/RecommendationStage";
-// NOTE: Make sure the import name matches the file you updated in the last step!
 import EvidenceInspector from "@/components/dashboard/EvidenceInspector"; 
 
 export default function AnalyzePage() {
@@ -28,8 +27,12 @@ export default function AnalyzePage() {
     confidence: number;
   } | null>(null);
 
-  // 🎯 NEW STATE: To hold the Neo4j genomic data
+  // Neo4j genomic data
   const [kgVerification, setKgVerification] = useState<any>(null);
+
+  // 🎯 NEW STATE: Pharmacy & Logistics
+  const [pharmacistReview, setPharmacistReview] = useState<any>(null);
+  const [procurementOrder, setProcurementOrder] = useState<any>(null);
 
   /**
    * Unified handler for both isolateId and patientProfile changes
@@ -64,7 +67,11 @@ export default function AnalyzePage() {
     setRiskFactors([]);
     setStrategy("");
     setMlPrediction(null);
-    setKgVerification(null); // Reset Neo4j data on new run
+    setKgVerification(null); 
+    
+    // 🎯 RESET PHARMACY STATE
+    setPharmacistReview(null);
+    setProcurementOrder(null);
 
     try {
       const response: AnalyzeResponse = await analyzeIsolate(
@@ -80,9 +87,11 @@ export default function AnalyzePage() {
         prediction: response.ml_prediction.prediction,
         confidence: response.ml_prediction.confidence,
       });
-
-      // 🎯 CAPTURE THE NEO4J DATA HERE
       setKgVerification(response.kg_verification);
+
+      // 🎯 CAPTURE PHARMACY & LOGISTICS DATA
+      setPharmacistReview(response.pharmacist_review);
+      setProcurementOrder(response.procurement_order);
 
     } catch (err) {
       setError(
@@ -107,12 +116,15 @@ export default function AnalyzePage() {
         isLoading={isLoading}
         error={error}
       />
-
-      {/* Center Panel: Recommendation Stage (50%) - Action-First */}
-      <RecommendationStage strategy={strategy} isLoading={isLoading} />
+      {/* Middle Panel: Recommendation Stage (50%) */}
+      <RecommendationStage 
+        strategy={strategy} 
+        isLoading={isLoading} 
+        pharmacist={pharmacistReview}
+        procurement={procurementOrder}
+      />
 
       {/* Right Panel: Evidence Inspector (25%) */}
-      {/* 🎯 PASS THE NEW STATE TO THE INSPECTOR */}
       <EvidenceInspector
         riskFactors={riskFactors}
         mlPrediction={mlPrediction}

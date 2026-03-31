@@ -1,0 +1,57 @@
+{
+    "inventory": {
+        "CEFTAZIDIME": {
+            "stock_vials": 62,
+            "critical_threshold": 30,
+            "cost_per_vial_usd": 35.5,
+            "supplier_lead_time_days": 2,
+            "formulary_status": "Approved",
+            "ddi_flags": [
+                "Aminoglycosides"
+            ]
+        },
+        "AUGMENTIN": {
+            "stock_vials": 150,
+            "critical_threshold": 50,
+            "cost_per_vial_usd": 12.0,
+            "supplier_lead_time_days": 1,
+            "formulary_status": "Approved",
+            "ddi_flags": [
+                "Methotrexate",
+                "Allopurinol"
+            ]
+        },
+        "GENTAMICIN": {
+            "stock_vials": 45,
+            "critical_threshold": 30,
+            "cost_per_vial_usd": 18.25,
+            "supplier_lead_time_days": 2,
+            "formulary_status": "Restricted",
+            "ddi_flags": [
+                "Cephalosporins",
+                "Loop_Diuretics"
+            ]
+        },
+        "CIPROFLOXACIN": {
+            "stock_vials": 200,
+            "critical_threshold": 100,
+            "cost_per_vial_usd": 8.5,
+            "supplier_lead_time_days": 1,
+            "formulary_status": "Approved",
+            "ddi_flags": [
+                "Tizanidine",
+                "QT_Prolonging_Agents"
+            ]
+        },
+        "IMIPENEM": {
+            "stock_vials": 8,
+            "critical_threshold": 20,
+            "cost_per_vial_usd": 125.0,
+            "supplier_lead_time_days": 3,
+            "formulary_status": "Restricted_ID_Approval_Required",
+            "ddi_flags": [
+                "Valproic_Acid"
+            ]
+        }
+    }
+}

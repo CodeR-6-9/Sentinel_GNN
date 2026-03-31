@@ -6,8 +6,8 @@ export interface PatientProfile {
   Age: number;
   Hospital_before: boolean;
   Infection_Freq: number;
-  Penicillin_Allergy?: boolean; // New safety override
-  Renal_Impaired?: boolean;     // New safety override
+  Penicillin_Allergy?: boolean;
+  Renal_Impaired?: boolean;
 }
 
 export interface AnalyzeResponse {
@@ -30,6 +30,22 @@ export interface AnalyzeResponse {
   };
   strategy: string;
   trace: string[];
+  pharmacist_review?: {
+    status: string;
+    formulary: string;
+    warnings: string[];
+    cost_usd: number;
+  };
+  procurement_order?: {
+    status: string;
+    po_number?: string;
+    drug?: string;
+    quantity?: number;
+    total_cost_usd?: number;
+    lead_time_days?: number;
+    alert?: string;
+    current_stock?: number;
+  };
 }
 
 export async function analyzeIsolate(
@@ -48,7 +64,6 @@ export async function analyzeIsolate(
         patient_profile: patientProfile,
       },
       {
-        // Force timeout after 10 seconds so it doesn't hang infinitely
         timeout: 10000, 
       }
     );

@@ -1,3 +1,5 @@
+import os
+import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,10 +11,12 @@ from langgraph.graph import StateGraph, END
 from app.agents.nodes.predictor import predictor_node
 from app.agents.nodes.strategist import strategist_node
 from app.agents.nodes.verifier import verifier_node 
+from app.agents.nodes.pharmacist import pharmacist_node 
+from app.agents.nodes.procurement import procurement_node 
 
 app = FastAPI(title="Sentinel-GNN Agent API")
 
-# --- 🛡️ CORS MIDDLEWARE ---
+# ---  CORS MIDDLEWARE ---
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -38,7 +42,7 @@ class AnalysisRequest(BaseModel):
     isolate_id: str
     patient_profile: PatientProfile
 
-# This is the shared "brain" that passes data between nodes
+# 🎯 UPGRADED STATE: Now includes Logistics memory
 class AgentState(TypedDict):
     isolate_id: str
     patient_profile: Dict[str, Any]
@@ -46,6 +50,9 @@ class AgentState(TypedDict):
     kg_verification: Dict[str, Any]
     strategy: str
     trace: List[str]
+    selected_drug: str                 
+    pharmacist_review: Dict[str, Any]   
+    procurement_order: Dict[str, Any]   
 
 # --- 3. BUILD THE MULTI-AGENT GRAPH ---
 workflow = StateGraph(AgentState)
@@ -54,23 +61,44 @@ workflow = StateGraph(AgentState)
 workflow.add_node("Predictor", predictor_node)
 workflow.add_node("Verifier", verifier_node)
 workflow.add_node("Strategist", strategist_node)
+workflow.add_node("Pharmacist", pharmacist_node)      
+workflow.add_node("Procurement", procurement_node)    
 
 # --- ⛓️ DEFINE THE SEQUENTIAL FLOW ---
 workflow.set_entry_point("Predictor")
 
 # Step 1: Predictor (ML) -> Verifier (Genomic DB)
 workflow.add_edge("Predictor", "Verifier")
-
 # Step 2: Verifier (Genomic DB) -> Strategist (Clinical Logic)
 workflow.add_edge("Verifier", "Strategist") 
-
-# Step 3: Strategist -> Finalize
-workflow.add_edge("Strategist", END)
+# Step 3: Strategist -> Pharmacist (Safety & Formulary)
+workflow.add_edge("Strategist", "Pharmacist")         
+# Step 4: Pharmacist -> Procurement (Supply Chain)
+workflow.add_edge("Pharmacist", "Procurement")        
+# Step 5: Procurement -> Finalize
+workflow.add_edge("Procurement", END)                 
 
 # Compile the final agent
 sentinel_agent = workflow.compile()
 
-# --- 4. FASTAPI ENDPOINT ---
+# --- 4. FASTAPI ENDPOINTS ---
+
+# 🎯 NEW: The Pharmacy Inventory Route for the Global Dashboard
+@app.get("/api/inventory")
+async def get_inventory():
+    """Fetches the live pharmacy inventory for the frontend dashboard."""
+    backend_root = os.path.abspath(os.path.dirname(__file__))
+    inventory_path = os.path.join(backend_root, "data", "pharmacy_inventory.json")
+    
+    try:
+        with open(inventory_path, "r") as f:
+            db = json.load(f)
+            return db["inventory"]
+    except Exception as e:
+        return {"error": f"Could not load inventory: {str(e)}"}
+
+
+# 🎯 EXISTING: The Main Analysis Route for the Doctor's Dashboard
 @app.post("/api/analyze")
 async def analyze_patient(data: AnalysisRequest):
     """
@@ -83,10 +111,13 @@ async def analyze_patient(data: AnalysisRequest):
         "ml_prediction": {},
         "kg_verification": {"validated": False, "genes": [], "details": []}, 
         "strategy": "",
-        "trace": []
+        "trace": [],
+        "selected_drug": "",                 
+        "pharmacist_review": {},             
+        "procurement_order": {}              
     }
     
-    # Run the full agent pipeline (Predictor -> Verifier -> Strategist)
+    # Run the full agent pipeline (Predictor -> Verifier -> Strategist -> Pharmacist -> Procurement)
     final_state = sentinel_agent.invoke(initial_state)
     
     # Return the unified payload expected by the Next.js Frontend
@@ -96,7 +127,9 @@ async def analyze_patient(data: AnalysisRequest):
         "ml_prediction": final_state["ml_prediction"],
         "kg_verification": final_state["kg_verification"],
         "strategy": final_state["strategy"],
-        "trace": final_state["trace"]
+        "trace": final_state["trace"],
+        "pharmacist_review": final_state.get("pharmacist_review", {}), 
+        "procurement_order": final_state.get("procurement_order", {})  
     }
 
 if __name__ == "__main__":
