@@ -1,118 +1,51 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import pandas as pd
-
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import recall_score
-from imblearn.over_sampling import SMOTE
+import os
 
 # ==============================
-# 🔹 MODEL (KEEP SAME AS COLAB)
-# =======================do i need to download th=======
-
-class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.30):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim, dim),
-            nn.BatchNorm1d(dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim, dim),
-            nn.BatchNorm1d(dim),
-        )
-
-    def forward(self, x):
-        return F.relu(x + self.net(x))
-
-
-class SentinelMLP(nn.Module):
-    def __init__(self, in_dim=10, hidden=256, dropout=0.30):
-        super().__init__()
-        self.enc = nn.Sequential(
-            nn.Linear(in_dim, hidden),
-            nn.BatchNorm1d(hidden),
-            nn.ReLU()
-        )
-        self.res1 = ResBlock(hidden, dropout)
-        self.res2 = ResBlock(hidden, dropout)
-        self.res3 = ResBlock(hidden, dropout)
-
-        self.head = nn.Sequential(
-            nn.Linear(hidden, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1)
-        )
-
-    def forward(self, x):
-        return self.head(self.res3(self.res2(self.res1(self.enc(x)))))
-
-# ==============================
-# 🔹 FEATURE ENGINEERING
-# ==============================
-
-def engineer_features(Xmat):
-    age_mean, age_std = Xmat[:,0].mean(), Xmat[:,0].std() + 1e-8
-    freq_mean, freq_std = Xmat[:,5].mean(), Xmat[:,5].std() + 1e-8
-
-    age_n = (Xmat[:,0] - age_mean) / age_std
-    freq_n = (Xmat[:,5] - freq_mean) / freq_std
-
-    risk = Xmat[:,2] + Xmat[:,3] + Xmat[:,4] + (Xmat[:,5] > 1).astype(float)
-    risk_n = (risk - risk.mean()) / (risk.std() + 1e-8)
-
-    return np.stack([
-        age_n, Xmat[:,1], Xmat[:,2], Xmat[:,3], Xmat[:,4], freq_n,
-        risk_n, Xmat[:,2]*Xmat[:,3], age_n*risk_n, freq_n*Xmat[:,3]
-    ], axis=1)
-
-# ==============================
-# 🔹 LOSS FUNCTION
-# ==============================
-
-class HybridLoss(nn.Module):
-    def __init__(self, pos_weight=5.0, alpha=0.75, gamma=2.0):
-        super().__init__()
-        self.pw = torch.tensor([pos_weight])
-        self.alpha = alpha
-        self.gamma = gamma
-
-    def forward(self, logits, targets):
-        pw = self.pw.to(logits.device)
-        wbce = F.binary_cross_entropy_with_logits(
-            logits, targets, pos_weight=pw, reduction='none'
-        )
-
-        prob = torch.sigmoid(logits)
-        p_t = prob * targets + (1 - prob) * (1 - targets)
-        a_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
-
-        focal = (a_t * (1 - p_t) ** self.gamma * wbce).mean()
-        return 0.7 * focal + 0.3 * wbce.mean()
-
-# ==============================
-# 🔹 TRAIN FUNCTION
+# 🔹 TRAIN FUNCTION (UPDATED)
 # ==============================
 
 def train_model(csv_path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"📊 Loading dataset from {csv_path}...")
+    
+    # Handle both CSV and Excel safely
+    if csv_path.endswith('.xlsx'):
+        df = pd.read_excel(csv_path)
+    else:
+        df = pd.read_csv(csv_path)
 
-    print("📊 Loading dataset...")
-    df = pd.read_csv(csv_path)
-
-    # BASIC CLEANING (simplified version)
-    df = df.dropna()
-
-    # Example features (adjust if needed)
+    # --- THE ROSETTA STONE DATA CLEANING ---
+    df.columns = df.columns.str.strip()
+    
+    # Extract Age & Gender from 'age/gender' if it exists in the raw data
+    if 'age/gender' in df.columns:
+        df['Age'] = df['age/gender'].astype(str).str.extract(r'(\d+)').astype(float)
+        df['Gender_Str'] = df['age/gender'].astype(str).str.extract(r'([M|F|m|f])')
+        df['Gender'] = df['Gender_Str'].map({'M': 1, 'm': 1, 'F': 0, 'f': 0})
+    
+    # Map Yes/No to 1/0
+    bool_map = {'Yes': 1, 'yes': 1, True: 1, 'True': 1, 'No': 0, 'no': 0, False: 0, 'False': 0}
+    for col in ['Diabetes', 'Hospital_before', 'Hypertension']:
+        if col in df.columns:
+            df[col] = df[col].map(bool_map)
+            
+    if 'Infection_Freq' in df.columns:
+        df['Infection_Freq'] = pd.to_numeric(df['Infection_Freq'], errors='coerce')
+    
+    # Map Target Variable (CIP resistance)
+    target_map = {'R': 1, 'S': 0, 'I': 1, 1: 1, 0: 0} 
+    if 'CIP' in df.columns:
+        df['CIP'] = df['CIP'].map(target_map)
+    
+    # Drop NaNs safely now that everything is mapped
     feature_cols = ['Age', 'Gender', 'Diabetes', 'Hospital_before', 'Hypertension', 'Infection_Freq']
-    X = df[feature_cols].values
-    Y = df['CIP'].values
+    df_clean = df.dropna(subset=feature_cols + ['CIP']).copy()
+    
+    print(f"✅ Cleaned dataset size: {len(df_clean)} rows")
 
-    # Feature engineering
+    # --- PREPARE TENSORS ---
+    X = df_clean[feature_cols].values
+    Y = df_clean['CIP'].values
     X_eng = engineer_features(X)
 
     # SMOTE
@@ -125,14 +58,14 @@ def train_model(csv_path):
     x_eval = torch.tensor(X_eng, dtype=torch.float).to(device)
     y_eval = torch.tensor(Y, dtype=torch.float).unsqueeze(1).to(device)
 
-    # Model
+    # --- MODEL SETUP ---
     model = SentinelMLP().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     criterion = HybridLoss()
 
     print("🚀 Training started...")
 
-    for epoch in range(100):
+    for epoch in range(101):
         model.train()
 
         optimizer.zero_grad()
@@ -145,12 +78,14 @@ def train_model(csv_path):
             with torch.no_grad():
                 preds = (torch.sigmoid(model(x_eval)) > 0.5).float()
                 rec = recall_score(y_eval.cpu(), preds.cpu())
-                print(f"Epoch {epoch} | Loss: {loss.item():.4f} | Recall: {rec:.3f}")
+                print(f"Epoch {epoch:3d} | Loss: {loss.item():.4f} | Recall: {rec:.3f}")
 
-    # SAVE MODEL
-    save_path = "app/models/sentinel_gnn_best.pth"
+    # --- SAVE MODEL ---
+    save_dir = "app/models"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, "sentinel_gnn_best.pth")
+    
     torch.save(model.state_dict(), save_path)
-
-    print(f"✅ Model saved at {save_path}")
+    print(f"🎉 SUCCESS! Model saved locally as {save_path}")
 
     return model
