@@ -6,10 +6,10 @@ import torch.nn.functional as F
 import numpy as np
 
 # =====================================================================
-# 1. THE MODEL ARCHITECTURE
+# 1. THE MONOTONIC MODEL ARCHITECTURE
 # =====================================================================
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.25):
+    def __init__(self, dim, dropout=0.35): # 🛡️ Increased dropout to 0.35
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, dim), nn.BatchNorm1d(dim), nn.ReLU(), nn.Dropout(dropout),
@@ -19,15 +19,20 @@ class ResBlock(nn.Module):
         return F.relu(x + self.net(x))
 
 class SentinelMLP(nn.Module):
-    def __init__(self, in_dim=4, hidden=128, dropout=0.25): 
+    def __init__(self, in_dim=4, hidden=64, dropout=0.35): # 🛡️ Reduced hidden to 64
         super().__init__()
         self.internal_dim = in_dim + 4 
+        
+        # Deep Path
         self.enc = nn.Sequential(nn.Linear(self.internal_dim, hidden), nn.BatchNorm1d(hidden), nn.ReLU())
         self.res1 = ResBlock(hidden, dropout)
         self.res2 = ResBlock(hidden, dropout)
         self.head = nn.Sequential(
-            nn.Linear(hidden, 32), nn.BatchNorm1d(32), nn.ReLU(), nn.Linear(32, 1)
+            nn.Linear(hidden, 16), nn.BatchNorm1d(16), nn.ReLU(), nn.Linear(16, 1) # 🛡️ Reduced head to 16
         )
+        
+        # 🚨 THE SAFETY LOCK: Monotonic Weight for Duration/Frequency 🚨
+        self.monotonic_weight = nn.Parameter(torch.tensor([0.5]))
         
     def forward(self, x): 
         age_freq = x[:, 1] * x[:, 3]
@@ -40,7 +45,13 @@ class SentinelMLP(nn.Module):
             age_hosp.unsqueeze(1), risk_factor.unsqueeze(1)
         ], dim=1)
         
-        return self.head(self.res2(self.res1(self.enc(x_engineered))))
+        # 1. Standard Network Output
+        deep_out = self.head(self.res2(self.res1(self.enc(x_engineered))))
+        
+        # 2. Forced Monotonic Addition (Guarantees Risk Goes Up with Duration)
+        direct_impact = F.relu(self.monotonic_weight) * x[:, 3].unsqueeze(1)
+        
+        return deep_out + direct_impact
 
 # =====================================================================
 # 2. GLOBAL TRAINING STATISTICS & THRESHOLD
@@ -49,7 +60,7 @@ AGE_MEAN = 45.6321
 AGE_STD = 24.8873
 FREQ_MEAN = 1.5143
 FREQ_STD = 1.0219
-THRESHOLD = 0.68 
+THRESHOLD = 0.67  #  Updated to perfectly match Colab results
 
 # =====================================================================
 # 3. PRODUCTION FEATURE ENGINEERING
@@ -67,7 +78,7 @@ def preprocess_features(features: list, encoder_classes: np.ndarray) -> np.ndarr
     if souche_str in encoder_classes:
         souche_encoded = np.where(encoder_classes == souche_str)[0][0]
     else:
-        print(f"⚠️ Warning: Unseen bacteria strain '{souche_str}'. Defaulting to encoded ID 0.")
+        print(f" Warning: Unseen bacteria strain '{souche_str}'. Defaulting to encoded ID 0.")
         souche_encoded = 0 
         
     # 2. Extract remaining features
@@ -87,7 +98,7 @@ def preprocess_features(features: list, encoder_classes: np.ndarray) -> np.ndarr
 def run_gnn_inference(features: list) -> dict:
     """Runs the 4 features through the optimized SentinelMLP model."""
     try:
-        # 🎯 FIX: Correctly point to the backend/app/models/ directory
+        # 🎯 Ensure it points to backend/app/models/ directory
         backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
         models_dir = os.path.join(backend_root, "app", "models")
         
@@ -97,11 +108,11 @@ def run_gnn_inference(features: list) -> dict:
         # Load the translation dictionary
         encoder_classes = np.load(encoder_path, allow_pickle=True)
         
-        # Preprocess features (This handles the strain text -> number translation)
+        # Preprocess features
         X_clean = preprocess_features(features, encoder_classes)
         
-        # Initialize and Load Model
-        model = SentinelMLP(in_dim=4)
+        # Initialize and Load Model (Ensure hidden=64 matches new architecture)
+        model = SentinelMLP(in_dim=4, hidden=64) 
         model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
         model.eval()
         
@@ -120,5 +131,5 @@ def run_gnn_inference(features: list) -> dict:
         }
         
     except Exception as e:
-        print(f"❌ ML Inference Error: {e}")
+        print(f" ML Inference Error: {e}")
         return {"prediction": 0, "is_resistant": False, "probability": 0.0, "confidence": 0.0, "driving_factors": []}

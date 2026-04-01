@@ -16,7 +16,7 @@ def build_vector_db():
     # ==========================================
     csv_path = os.path.join(DATA_DIR, "Guidelines_and_Protocols.csv")
     if os.path.exists(csv_path):
-        print("📊 Loading Clinical Guidelines CSV...")
+        print(" Loading Clinical Guidelines CSV...")
         df_csv = pd.read_csv(csv_path).fillna("None")
         for index, row in df_csv.iterrows():
             content = (
@@ -30,7 +30,7 @@ def build_vector_db():
             doc = Document(page_content=content, metadata={"source": "Clinical_Guidelines", "type": "treatment"})
             documents.append(doc)
     else:
-        print("⚠️ Guidelines_and_Protocols.csv not found, skipping...")
+        print(" Guidelines_and_Protocols.csv not found, skipping...")
 
     # ==========================================
     # 2. INGEST GENOMIC DATA (CARD ARO TSV)
@@ -68,7 +68,7 @@ def build_vector_db():
             doc = Document(page_content=content, metadata={"source": "CARD_Index", "type": "resistance_mapping"})
             documents.append(doc)
     else:
-        print("⚠️ aro_index (1).tsv not found, skipping...")
+        print(" aro_index (1).tsv not found, skipping...")
 
     # ==========================================
     # 4. BUILD THE DATABASE
@@ -89,7 +89,7 @@ def build_vector_db():
         embedding=embeddings, 
         persist_directory=CHROMA_PATH
     )
-    print(f"✅ Brain upgrade complete! Your AI now knows {len(documents)} clinical and genomic rules.")
+    print(f" Brain upgrade complete! Your AI now knows {len(documents)} clinical and genomic rules.")
 
 if __name__ == "__main__":
     build_vector_db()
