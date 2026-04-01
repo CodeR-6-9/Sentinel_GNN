@@ -129,3 +129,6 @@ dmypy.json
 *.swo
 *~
 .DS_Store
+
+# Local Vector Database
+chroma_db/
