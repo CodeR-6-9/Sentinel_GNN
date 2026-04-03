@@ -20,7 +20,8 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
 
 # Load credentials from .env
 load_dotenv() 
@@ -55,9 +56,9 @@ class AgentState(TypedDict):
     kg_verification: Dict[str, Any]
     strategy: str
     trace: List[str]
-    selected_drug: str                 
-    pharmacist_review: Dict[str, Any]   
-    procurement_order: Dict[str, Any]   
+    selected_drug: str                
+    pharmacist_review: Dict[str, Any]  
+    procurement_order: Dict[str, Any]  
 
 # --- 3. BUILD THE MULTI-AGENT GRAPH ---
 workflow = StateGraph(AgentState)
@@ -72,9 +73,9 @@ workflow.add_node("Procurement", procurement_node)
 workflow.set_entry_point("Predictor")
 workflow.add_edge("Predictor", "Verifier")
 workflow.add_edge("Verifier", "Strategist") 
-workflow.add_edge("Strategist", "Pharmacist")         
+workflow.add_edge("Strategist", "Pharmacist")        
 workflow.add_edge("Pharmacist", "Procurement")        
-workflow.add_edge("Procurement", END)                 
+workflow.add_edge("Procurement", END)                
 
 sentinel_agent = workflow.compile()
 
@@ -93,8 +94,6 @@ async def get_inventory():
 
 @app.post("/api/analyze")
 async def analyze_patient(data: AnalysisRequest):
-    # --- 🚨 HACKATHON DEMO OVERRIDE 🚨 ---
-    # Forces a resistant path if MRSA is in the ID
     is_mrsa = "MRSA" in data.isolate_id.upper()
     
     initial_state: AgentState = {
@@ -109,9 +108,9 @@ async def analyze_patient(data: AnalysisRequest):
         "kg_verification": {"validated": False, "genes": [], "details": []}, 
         "strategy": "",
         "trace": ["⚠️ System Alert: Potential MRSA Path Activated"] if is_mrsa else [],
-        "selected_drug": "",                 
-        "pharmacist_review": {},             
-        "procurement_order": {}              
+        "selected_drug": "",                
+        "pharmacist_review": {},            
+        "procurement_order": {}             
     }
     
     final_state = sentinel_agent.invoke(initial_state)
@@ -129,13 +128,20 @@ async def analyze_patient(data: AnalysisRequest):
 
 # --- 5. AI CHATBOT (RAG) ---
 my_groq_key = os.getenv("GROQ_API_KEY")
-llm = ChatGroq(model="llama3-8b-8192", temperature=0.2, api_key=my_groq_key)
+# Using the updated, working Groq model
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2, api_key=my_groq_key)
 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
 backend_root = os.path.abspath(os.path.dirname(__file__))
 chroma_path = os.path.join(backend_root, "chroma_db")
-vector_store = Chroma(persist_directory=chroma_path, embedding_function=embeddings)
-retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+
+# Wrap in try/except so the server doesn't crash if DB isn't built
+try:
+    vector_store = Chroma(persist_directory=chroma_path, embedding_function=embeddings)
+    retriever = vector_store.as_retriever(search_kwargs={"k": 5})
+except Exception as e:
+    print(f"⚠️ Warning: ChromaDB not loaded properly: {e}")
+    retriever = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -144,24 +150,62 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat_with_specialist(request: ChatRequest):
+    print("\n--- 🚨 INCOMING CHAT REQUEST ---")
+    print(f"Message: {request.message}")
+    print(f"Context Received: {request.context}")
+    print(f"History Length: {len(request.history) if request.history else 0} messages")
+    print("--------------------------------\n")
+
     user_msg = request.message
-    patient = request.context.get("patient_profile", {}) if request.context else {}
     
-    docs = retriever.invoke(user_msg)
-    medical_context = "\n\n".join([doc.page_content for doc in docs])
+    # 1. BULLETPROOF CONTEXT HANDLING
+    patient = {}
+    if request.context:
+        if "patient_profile" in request.context:
+            patient = request.context["patient_profile"]
+        else:
+            patient = request.context
+            
+    # 2. RAG RETRIEVAL
+    medical_context = ""
+    if retriever:
+        try:
+            docs = retriever.invoke(user_msg)
+            medical_context = "\n\n".join([doc.page_content for doc in docs])
+        except Exception as e:
+            print(f"Retrieval error: {e}")
+            
+    # 3. BULLETPROOF HISTORY HANDLING
+    formatted_history = []
+    if request.history:
+        for msg in request.history:
+            role = msg.get("role", "").lower()
+            text = msg.get("content") or msg.get("text") or ""
+            
+            if role == "user":
+                formatted_history.append(HumanMessage(content=text))
+            elif role in ["assistant", "model", "ai"]:
+                formatted_history.append(AIMessage(content=text))
     
+    # 4. PROMPT WITH HISTORY INJECTED
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a clinical AI helping a doctor. Use the context: {medical_context} to discuss patient: {patient_profile}"),
+        ("system", "You are Sentinel, a clinical AI Copilot. You have full access to this patient's digital twin: {patient_profile}. Use this medical knowledge if relevant: {medical_context}."),
+        MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{user_message}")
     ])
     
     chain = prompt | llm
-    response = chain.invoke({
-        "patient_profile": str(patient),
-        "medical_context": medical_context,
-        "user_message": user_msg
-    })
-    return {"reply": response.content}
+    
+    try:
+        response = chain.invoke({
+            "patient_profile": str(patient),
+            "medical_context": medical_context,
+            "chat_history": formatted_history,
+            "user_message": user_msg
+        })
+        return {"reply": response.content}
+    except Exception as e:
+        return {"reply": f"AI processing error: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn

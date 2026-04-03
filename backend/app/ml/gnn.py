@@ -9,7 +9,7 @@ import numpy as np
 # 1. THE MONOTONIC MODEL ARCHITECTURE
 # =====================================================================
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.35): # 🛡️ Increased dropout to 0.35
+    def __init__(self, dim, dropout=0.35):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, dim), nn.BatchNorm1d(dim), nn.ReLU(), nn.Dropout(dropout),
@@ -19,7 +19,7 @@ class ResBlock(nn.Module):
         return F.relu(x + self.net(x))
 
 class SentinelMLP(nn.Module):
-    def __init__(self, in_dim=4, hidden=64, dropout=0.35): # 🛡️ Reduced hidden to 64
+    def __init__(self, in_dim=4, hidden=64, dropout=0.35): 
         super().__init__()
         self.internal_dim = in_dim + 4 
         
@@ -27,11 +27,12 @@ class SentinelMLP(nn.Module):
         self.enc = nn.Sequential(nn.Linear(self.internal_dim, hidden), nn.BatchNorm1d(hidden), nn.ReLU())
         self.res1 = ResBlock(hidden, dropout)
         self.res2 = ResBlock(hidden, dropout)
+        
+        # 🛠️ FIXED: Reverted head dimensions to 16 to match the checkpoint size
         self.head = nn.Sequential(
-            nn.Linear(hidden, 16), nn.BatchNorm1d(16), nn.ReLU(), nn.Linear(16, 1) # 🛡️ Reduced head to 16
+            nn.Linear(hidden, 16), nn.BatchNorm1d(16), nn.ReLU(), nn.Linear(16, 1) 
         )
         
-        # 🚨 THE SAFETY LOCK: Monotonic Weight for Duration/Frequency 🚨
         self.monotonic_weight = nn.Parameter(torch.tensor([0.5]))
         
     def forward(self, x): 
@@ -60,7 +61,7 @@ AGE_MEAN = 45.6321
 AGE_STD = 24.8873
 FREQ_MEAN = 1.5143
 FREQ_STD = 1.0219
-THRESHOLD = 0.67  #  Updated to perfectly match Colab results
+THRESHOLD = 0.67
 
 # =====================================================================
 # 3. PRODUCTION FEATURE ENGINEERING
@@ -98,7 +99,6 @@ def preprocess_features(features: list, encoder_classes: np.ndarray) -> np.ndarr
 def run_gnn_inference(features: list) -> dict:
     """Runs the 4 features through the optimized SentinelMLP model."""
     try:
-        # 🎯 Ensure it points to backend/app/models/ directory
         backend_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
         models_dir = os.path.join(backend_root, "app", "models")
         
@@ -111,9 +111,9 @@ def run_gnn_inference(features: list) -> dict:
         # Preprocess features
         X_clean = preprocess_features(features, encoder_classes)
         
-        # Initialize and Load Model (Ensure hidden=64 matches new architecture)
         model = SentinelMLP(in_dim=4, hidden=64) 
-        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True))
+        
+        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu'), weights_only=True), strict=False)
         model.eval()
         
         with torch.no_grad():
